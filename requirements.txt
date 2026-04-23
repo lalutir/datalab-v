@@ -1,0 +1,13 @@
+xarray>=2024.1.0
+dask[complete]>=2024.1.0
+cfgrib>=0.9.10
+eccodes>=1.6.0
+netcdf4>=1.6.0
+azure-storage-blob>=12.19.0
+adlfs>=2024.2.0
+pandas>=2.1.0
+pyarrow>=14.0.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+fsspec>=2024.2.0
+zarr>=3.0.0
