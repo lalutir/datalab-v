@@ -1,0 +1,62 @@
+# Azure Blob Storage settings
+azure:
+  container_name: "grib"
+  blob_prefix: ""
+  # Available files: 1998-1999.grib, 2000-2001.grib, 2002-2003.grib,
+  #                  2018-2019.grib, 2020-2021.grib, 2022-2023.grib
+  # {year} is replaced with values from selection.blob_files below.
+  blob_pattern: "{year}.grib"
+
+# Subset selection
+# Adjust these to control what data gets extracted.
+selection:
+  # Which blob files to download (must match actual filenames without .grib)
+  # Available: 1998-1999, 2000-2001, 2002-2003, 2018-2019, 2020-2021, 2022-2023
+  blob_files:
+    - "2018-2019"
+
+  # ERA5 variable short names to keep
+  # Common names: t2m, d2m, tp, u10, v10, msl
+  # ASSUMPTION: these match your GRIB file contents.
+  # Use the starter notebook to inspect actual variable names.
+  variables:
+    - t2m
+    - d2m
+
+  # Time range within selected years
+  time_range:
+    start: "2018-01-01"
+    end: "2018-03-31"
+
+  # Geographic bounding box (decimal degrees)
+  # ASSUMPTION: example region is East Africa.
+  bbox:
+    lat_min: -5.0
+    lat_max: 15.0
+    lon_min: 25.0
+    lon_max: 45.0
+
+# Processing settings
+processing:
+  # Dask chunk sizes for lazy loading
+  chunks:
+    time: 100
+    latitude: 50
+    longitude: 50
+
+  # Resample hourly data to this frequency. Set to null to skip.
+  resample_freq: "1D"
+
+  # Aggregation method per variable when resampling
+  agg_methods:
+    t2m: mean
+    d2m: mean
+    tp: sum
+    u10: mean
+    v10: mean
+    msl: mean
+
+# Output settings
+output:
+  dir: "data/processed"
+  format: "both"  # Options: zarr, parquet, both
