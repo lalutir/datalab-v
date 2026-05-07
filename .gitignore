@@ -24,3 +24,9 @@ data/processed/
 # OS
 .DS_Store
 Thumbs.db
+
+# .gitignore
+.venv/
+.env
+__pycache__/
+*.pyc
