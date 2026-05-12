@@ -1,2 +1,32 @@
 *.grib*
 /Autonomous Systems/AS
+
+# Environment
+.env
+/.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Processed data outputs
+data/processed/
+*.zarr/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# .gitignore
+.venv/
+.env
+__pycache__/
+*.pyc
