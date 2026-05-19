@@ -5,6 +5,7 @@ Other modules never interact with Azure directly.
 """
 
 import logging
+import zipfile
 from pathlib import Path
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
@@ -116,17 +117,92 @@ def download_blob(
     return local_path
 
 
-def download_selected_blobs(config: PipelineConfig) -> list[Path]:
-    """Download GRIB files for all configured blob_files.
+def _unzip_blob(zip_path: Path, dest_dir: Path) -> list[Path]:
+    """Extract a downloaded ZIP file and return paths to the contained data files.
+
+    Each ZIP is extracted into its own subdirectory (named after the ZIP stem)
+    to prevent filename collisions when multiple ZIPs share identical internal names
+    (e.g. every month ZIP contains data_stream-oper_stepType-instant.nc).
+    Extraction is skipped per-member if the file already exists with matching size.
+
+    Args:
+        zip_path: Path to the local .zip file.
+        dest_dir: Parent directory; each ZIP gets its own subdirectory here.
 
     Returns:
-        List of local file paths for downloaded blobs.
+        List of paths to extracted NetCDF (.nc) or GRIB data files.
     """
-    paths = []
+    DATA_EXTENSIONS = {".nc", ".nc4", ".grib", ".grib2", ".grb", ".grb2"}
+
+    # Extract into a dedicated subdirectory so different ZIPs never overwrite each other
+    zip_subdir = dest_dir / zip_path.stem
+    zip_subdir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        members = zf.infolist()
+        logger.info(
+            "ZIP %s contains %d file(s): %s",
+            zip_path.name,
+            len(members),
+            [m.filename for m in members],
+        )
+
+        extracted = []
+        for member in members:
+            out_path = zip_subdir / member.filename
+            if out_path.exists() and out_path.stat().st_size == member.file_size:
+                logger.info("Skipping extraction, already exists: %s", member.filename)
+            else:
+                zf.extract(member, zip_subdir)
+                logger.info(
+                    "Extracted: %s (%.2f MB)",
+                    member.filename,
+                    member.file_size / 1e6,
+                )
+            extracted.append(out_path)
+
+    data_files = [p for p in extracted if p.suffix.lower() in DATA_EXTENSIONS]
+    if not data_files:
+        # Fallback: return all extracted files if no recognised extension found
+        logger.warning(
+            "No recognised data extensions (.nc, .grib, etc.) in %s. "
+            "Treating all extracted files as data: %s",
+            zip_path.name,
+            [p.name for p in extracted],
+        )
+        data_files = extracted
+
+    logger.info(
+        "Unzip complete for %s -> %s/: %d file(s): %s",
+        zip_path.name,
+        zip_subdir.name,
+        len(data_files),
+        [p.name for p in data_files],
+    )
+    return data_files
+
+
+def download_selected_blobs(config: PipelineConfig) -> list[Path]:
+    """Download ZIP archives for all configured blob_files and extract GRIB contents.
+
+    Each ZIP is downloaded (with resume/cache support) then extracted.
+    Returns the extracted GRIB file paths, which are passed directly to the loader.
+
+    Returns:
+        List of local GRIB file paths extracted from the downloaded ZIP archives.
+    """
+    grib_paths = []
     for blob_file in config.selection.blob_files:
         blob_name = resolve_blob_name(config, blob_file)
-        local_path = download_blob(config, blob_name)
-        paths.append(local_path)
+        logger.info("Fetching blob: %s", blob_name)
+        local_zip = download_blob(config, blob_name)
+        extracted = _unzip_blob(local_zip, config.raw_dir)
+        grib_paths.extend(extracted)
 
-    logger.info("Downloaded %d files: %s", len(paths), config.selection.blob_files)
-    return paths
+    logger.info(
+        "Prepared %d data file(s) from %d ZIP archive(s): %s",
+        len(grib_paths),
+        len(config.selection.blob_files),
+        [p.name for p in grib_paths],
+    )
+    return grib_paths

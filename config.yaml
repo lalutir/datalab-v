@@ -1,40 +1,44 @@
 # Azure Blob Storage settings
 azure:
-  container_name: "grib"
+  container_name: "era5-data"
   blob_prefix: ""
-  # Available files: 1998-1999.grib, 2000-2001.grib, 2002-2003.grib,
-  #                  2018-2019.grib, 2020-2021.grib, 2022-2023.grib
+  # Files are named: era5_{YYYY}_{MM}.zip, e.g. era5_2024_08.zip
   # {year} is replaced with values from selection.blob_files below.
-  blob_pattern: "{year}.grib"
+  blob_pattern: "era5_{year}.zip"
 
 # Subset selection
-# Adjust these to control what data gets extracted.
 selection:
-  # Which blob files to download (must match actual filenames without .grib)
-  # Available: 1998-1999, 2000-2001, 2002-2003, 2018-2019, 2020-2021, 2022-2023
-  blob_files:
-    - "2018-2019"
+  # Year range to process. The pipeline downloads all 12 months per year automatically.
+  # Available in Azure: 1990-2025
+  year_start: 2024
+  year_end: 2024
 
-  # ERA5 variable short names to keep
-  # Common names: t2m, d2m, tp, u10, v10, msl
-  # ASSUMPTION: these match your GRIB file contents.
-  # Use the starter notebook to inspect actual variable names.
+  # All 15 ERA5 variables present in the ZIP files
   variables:
-    - t2m
+    # Instant variables (snapshot at each 6-hour step)
+    - u10
+    - v10
     - d2m
+    - t2m
+    - sp
+    - swvl1
+    - swvl2
+    # Accumulated variables (total over the 6-hour step)
+    - tp
+    - ssrd
+    - e
+    - pev
+    - ssro
+    - sro
+    - lsp
+    - vimd
 
-  # Time range within selected years
-  time_range:
-    start: "2018-01-01"
-    end: "2018-03-31"
-
-  # Geographic bounding box (decimal degrees)
-  # ASSUMPTION: example region is East Africa.
+  # Geographic bounding box for Ethiopia
   bbox:
-    lat_min: -5.0
+    lat_min: 3.0
     lat_max: 15.0
-    lon_min: 25.0
-    lon_max: 45.0
+    lon_min: 33.0
+    lon_max: 48.0
 
 # Processing settings
 processing:
@@ -47,16 +51,26 @@ processing:
   # Resample hourly data to this frequency. Set to null to skip.
   resample_freq: "1D"
 
-  # Aggregation method per variable when resampling
+  # Aggregation method per variable when resampling to daily
+  # Instant variables -> mean; accumulated variables -> sum
   agg_methods:
-    t2m: mean
-    d2m: mean
-    tp: sum
     u10: mean
     v10: mean
-    msl: mean
+    d2m: mean
+    t2m: mean
+    sp: mean
+    swvl1: mean
+    swvl2: mean
+    tp: sum
+    ssrd: sum
+    e: sum
+    pev: sum
+    ssro: sum
+    sro: sum
+    lsp: sum
+    vimd: sum
 
 # Output settings
 output:
   dir: "data/processed"
-  format: "both"  # Options: zarr, parquet, both
+  format: "parquet"  # Options: zarr, parquet, both

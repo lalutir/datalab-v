@@ -6,7 +6,6 @@ so memory usage stays manageable.
 """
 
 import logging
-import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -36,11 +35,8 @@ def to_zarr_self(ds: xr.Dataset, output_path: Path) -> Path:
     if ds.chunks:
         ds = ds.chunk("auto")
 
-    # Remove existing Zarr store first to avoid Windows permission errors
-    if output_path.exists():
-        shutil.rmtree(output_path)
-
-    ds.to_zarr(str(output_path))
+    # mode='w' overwrites in place without deleting first (avoids Windows PermissionError)
+    ds.to_zarr(str(output_path), mode="w")
     logger.info("Saved Zarr store: %s", output_path)
     return output_path
 
@@ -85,12 +81,15 @@ def to_dataframe(ds: xr.Dataset) -> pd.DataFrame:
     return df
 
 
-def export_dataset(ds: xr.Dataset, config: PipelineConfig) -> dict[str, Path]:
+def export_dataset(
+    ds: xr.Dataset, config: PipelineConfig, label: str = "era5_subset"
+) -> dict[str, Path]:
     """Export a dataset using the configured output format.
 
     Args:
         ds: Dataset to export.
         config: Pipeline configuration with output settings.
+        label: Base filename without extension, e.g. "era5_2024" -> era5_2024.parquet.
 
     Returns:
         Dictionary mapping format name to output path.
@@ -101,12 +100,12 @@ def export_dataset(ds: xr.Dataset, config: PipelineConfig) -> dict[str, Path]:
     results = {}
 
     if fmt in ("zarr", "both"):
-        zarr_path = out_dir / "era5_subset.zarr"
+        zarr_path = out_dir / f"{label}.zarr"
         to_zarr_self(ds, zarr_path)
         results["zarr"] = zarr_path
 
     if fmt in ("parquet", "both"):
-        parquet_path = out_dir / "era5_subset.parquet"
+        parquet_path = out_dir / f"{label}.parquet"
         to_parquet(ds, parquet_path)
         results["parquet"] = parquet_path
 
