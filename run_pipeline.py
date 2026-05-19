@@ -3,7 +3,9 @@
 Reads config.yaml, loops over each year in year_start..year_end,
 downloads all 12 monthly ZIP files from Azure, merges them into one
 yearly dataset, applies spatial/variable filters, resamples to daily,
-and exports one Parquet file per year: era5_{year}.parquet.
+then concatenates all years into a single DataFrame, computes climate
+indices (API, SPEI, SMI, Total Runoff), and exports one combined
+Parquet file: era5_{year_start}_{year_end}.parquet.
 
 Usage:
     python run_pipeline.py
@@ -15,16 +17,18 @@ import copy
 import logging
 from pathlib import Path
 
+import pandas as pd
+
 from src.config import load_config
 from src.storage import download_selected_blobs
 from src.loader import open_era5_multiple
 from src.subset import apply_all_filters
 from src.aggregate import resample_dataset
-from src.export import export_dataset
+from src.export import to_dataframe
+from src.indices import add_indices
 
 
 def setup_logging() -> None:
-    """Configure logging for the pipeline."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -53,7 +57,7 @@ def main() -> None:
     logger.info("Loading configuration...")
     config = load_config(args.config)
     logger.info(
-        "Year range: %d-%d | Variables: %s | Bbox: lat [%.1f, %.1f] lon [%.1f, %.1f]",
+        "Year range: %d-%d | Variables: %s | Bbox: lat [%.2f, %.2f] lon [%.2f, %.2f]",
         config.selection.year_start,
         config.selection.year_end,
         config.selection.variables,
@@ -65,6 +69,8 @@ def main() -> None:
 
     years = list(range(config.selection.year_start, config.selection.year_end + 1))
     logger.info("Processing %d year(s): %d to %d", len(years), years[0], years[-1])
+
+    all_dfs: list[pd.DataFrame] = []
 
     for year in years:
         logger.info("--- Year %d ---", year)
@@ -80,28 +86,57 @@ def main() -> None:
             logger.info("[%d] Step 2: Opening datasets lazily...", year)
             ds = open_era5_multiple(local_paths, year_config)
 
-            # Step 3: Apply variable, time, and bbox filters
-            logger.info("[%d] Step 3: Applying filters (variables, time, bbox)...", year)
+            # Step 3: Apply variable, time, and bbox filters (single-point selection)
+            logger.info("[%d] Step 3: Applying filters (variables, time, point)...", year)
             ds = apply_all_filters(ds, year_config)
             logger.info("[%d] Filtered shape: %s", year, dict(ds.sizes))
 
-            # Step 4: Resample to daily
+            # Step 4: Resample to daily (mean for instant vars, sum for accumulated)
             logger.info("[%d] Step 4: Resampling to daily...", year)
             ds = resample_dataset(ds, year_config)
 
-            # Step 5: Export as era5_{year}.parquet
-            logger.info("[%d] Step 5: Exporting...", year)
-            results = export_dataset(ds, year_config, label=f"era5_{year}")
-            for fmt, path in results.items():
-                size_mb = path.stat().st_size / 1e6
-                logger.info("[%d] Exported %s: %s (%.1f MB)", year, fmt, path.name, size_mb)
+            # Step 5: Materialise to DataFrame and collect
+            logger.info("[%d] Step 5: Converting to DataFrame...", year)
+            df_year = to_dataframe(ds)
+            logger.info("[%d] %d rows collected", year, len(df_year))
+            all_dfs.append(df_year)
 
         except Exception as exc:
             logger.error("[%d] Failed: %s", year, exc, exc_info=True)
             logger.info("[%d] Skipping to next year.", year)
             continue
 
-    logger.info("All years complete. Output: %s", config.output.dir)
+    if not all_dfs:
+        logger.error("No data collected for any year. Exiting.")
+        return
+
+    # Combine all years into one DataFrame
+    logger.info("Combining %d year(s) into a single DataFrame...", len(all_dfs))
+    df_all = pd.concat(all_dfs, ignore_index=True)
+    df_all = df_all.sort_values("time").reset_index(drop=True)
+    logger.info("Combined shape: %d rows × %d columns", len(df_all), len(df_all.columns))
+
+    # Compute climate indices
+    logger.info("Computing climate indices (API, SPEI, SMI, Total Runoff)...")
+    df_all = add_indices(df_all)
+    logger.info("Indices added. Final shape: %d rows × %d columns", len(df_all), len(df_all.columns))
+
+    # Export single combined Parquet
+    out_dir = config.output.dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    label = f"era5_{config.selection.year_start}_{config.selection.year_end}"
+    out_path = out_dir / f"{label}.parquet"
+    df_all.to_parquet(str(out_path), index=False)
+    size_mb = out_path.stat().st_size / 1e6
+    logger.info(
+        "Exported combined dataset: %s (%d rows, %d cols, %.1f MB)",
+        out_path.name,
+        len(df_all),
+        len(df_all.columns),
+        size_mb,
+    )
+
+    logger.info("Pipeline complete. Output: %s", config.output.dir)
 
 
 if __name__ == "__main__":

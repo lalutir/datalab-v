@@ -10,8 +10,8 @@ azure:
 selection:
   # Year range to process. The pipeline downloads all 12 months per year automatically.
   # Available in Azure: 1990-2025
-  year_start: 2024
-  year_end: 2024
+  year_start: 2000
+  year_end: 2025
 
   # All 15 ERA5 variables present in the ZIP files
   variables:
@@ -33,12 +33,12 @@ selection:
     - lsp
     - vimd
 
-  # Geographic bounding box for Ethiopia
+  # Single grid point (lat_min == lat_max triggers nearest-neighbour selection)
   bbox:
-    lat_min: 3.0
-    lat_max: 15.0
-    lon_min: 33.0
-    lon_max: 48.0
+    lat_min: 9.25
+    lat_max: 9.25
+    lon_min: 42.75
+    lon_max: 42.75
 
 # Processing settings
 processing:
