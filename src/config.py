@@ -32,14 +32,17 @@ class AzureConfig:
 
 @dataclass
 class SelectionConfig:
-    blob_files: list[str] = field(default_factory=lambda: ["2018-2019"])
+    year_start: int = 2024
+    year_end: int = 2024
     variables: list[str] = field(default_factory=lambda: ["t2m", "d2m"])
-    time_start: str = "2018-01-01"
-    time_end: str = "2018-03-31"
-    lat_min: float = -5.0
+    lat_min: float = 3.0
     lat_max: float = 15.0
-    lon_min: float = 25.0
-    lon_max: float = 45.0
+    lon_min: float = 33.0
+    lon_max: float = 48.0
+    # Runtime fields: populated per year by run_pipeline.py, not read from YAML
+    blob_files: list[str] = field(default_factory=list)
+    time_start: str = ""
+    time_end: str = ""
 
 
 @dataclass
@@ -50,12 +53,10 @@ class ProcessingConfig:
     resample_freq: Optional[str] = "1D"
     agg_methods: dict[str, str] = field(
         default_factory=lambda: {
-            "t2m": "mean",
-            "d2m": "mean",
-            "tp": "sum",
-            "u10": "mean",
-            "v10": "mean",
-            "msl": "mean",
+            "u10": "mean", "v10": "mean", "d2m": "mean", "t2m": "mean",
+            "sp": "mean", "swvl1": "mean", "swvl2": "mean",
+            "tp": "sum", "ssrd": "sum", "e": "sum", "pev": "sum",
+            "ssro": "sum", "sro": "sum", "lsp": "sum", "vimd": "sum",
         }
     )
 
@@ -115,17 +116,15 @@ def load_config(config_path: Optional[Path] = None) -> PipelineConfig:
 
     # Build selection config
     sel_raw = raw.get("selection", {})
-    tr = sel_raw.get("time_range", {})
     bb = sel_raw.get("bbox", {})
     selection = SelectionConfig(
-        blob_files=sel_raw.get("blob_files", ["2018-2019"]),
+        year_start=sel_raw.get("year_start", 2024),
+        year_end=sel_raw.get("year_end", 2024),
         variables=sel_raw.get("variables", ["t2m", "d2m"]),
-        time_start=tr.get("start", "2018-01-01"),
-        time_end=tr.get("end", "2018-03-31"),
-        lat_min=bb.get("lat_min", -5.0),
+        lat_min=bb.get("lat_min", 3.0),
         lat_max=bb.get("lat_max", 15.0),
-        lon_min=bb.get("lon_min", 25.0),
-        lon_max=bb.get("lon_max", 45.0),
+        lon_min=bb.get("lon_min", 33.0),
+        lon_max=bb.get("lon_max", 48.0),
     )
 
     # Build processing config
@@ -151,5 +150,5 @@ def load_config(config_path: Optional[Path] = None) -> PipelineConfig:
         raw_dir=PROJECT_ROOT / "data" / "raw",
     )
 
-    logger.debug("Config loaded: blob_files=%s, variables=%s", selection.blob_files, selection.variables)
+    logger.debug("Config loaded: years=%d-%d, variables=%s", selection.year_start, selection.year_end, selection.variables)
     return config

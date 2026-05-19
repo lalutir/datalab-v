@@ -95,6 +95,29 @@ def select_bbox(
         logger.warning("Could not detect lat/lon coordinates, skipping bbox selection")
         return ds
 
+    # Single-point selection when min == max (within floating-point tolerance)
+    if abs(lat_max - lat_min) < 1e-6 and abs(lon_max - lon_min) < 1e-6:
+        ds_sub = ds.sel(
+            {lat_name: lat_min, lon_name: lon_min},
+            method="nearest",
+        )
+        # Scalar sel drops the dimension; restore as size-1 dims so downstream
+        # code (to_dataframe, concat) keeps lat/lon as regular columns.
+        if lat_name not in ds_sub.dims:
+            ds_sub = ds_sub.expand_dims(
+                {lat_name: [float(ds_sub[lat_name].values)]}
+            )
+        if lon_name not in ds_sub.dims:
+            ds_sub = ds_sub.expand_dims(
+                {lon_name: [float(ds_sub[lon_name].values)]}
+            )
+        logger.info(
+            "Selected point (nearest): lat=%.4f, lon=%.4f",
+            float(ds_sub[lat_name].values[0]),
+            float(ds_sub[lon_name].values[0]),
+        )
+        return ds_sub
+
     # ERA5 often has latitude in descending order (90 to -90)
     lat_values = ds[lat_name].values
     if lat_values[0] > lat_values[-1]:
