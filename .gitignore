@@ -14,9 +14,12 @@ __pycache__/
 dist/
 build/
 
-# Processed data outputs
-data/processed/
-*.zarr/
+# Raw downloaded data (ZIPs and extracted NC files, never committed)
+data/raw/
+
+# Processed outputs: Zarr stores excluded, Parquet files ARE committed
+data/processed/*.zarr/
+data/processed/*.nc
 
 # IDE
 .vscode/
