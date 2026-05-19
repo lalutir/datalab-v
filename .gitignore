@@ -1,6 +1,7 @@
 *.grib*
 *.nc
 /Autonomous Systems/AS
+\venv
 
 # Environment
 .env
