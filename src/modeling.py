@@ -11,8 +11,8 @@ Forecasters
 
 Risk classifiers
 ----------------
-- DroughtRiskClassifier : SPEI + API -> 5-level drought risk.
-- FloodRiskClassifier   : SMI + Total Runoff -> 5-level flood risk.
+- DroughtRiskClassifier : SPEI + API + SMI + Total Runoff -> 5-level drought risk.
+- FloodRiskClassifier   : SPEI + API + SMI + Total Runoff -> 5-level flood risk.
 
 References
 ----------
@@ -1067,14 +1067,13 @@ class ProphetForecaster(BaseForecaster):
 
 
 class DroughtRiskClassifier:
-    """Classify drought risk from SPEI and API.
+    """Classify drought risk from SPEI, API, SMI, and Total Runoff.
 
-    The Standardized Precipitation-Evapotranspiration Index (SPEI) is the
-    primary indicator and is classified according to the McKee et al. (1993)
-    scale.  The Antecedent Precipitation Index (API) acts as a secondary
-    modifier: when API falls below its historical low-percentile threshold,
+    SPEI is the primary indicator, classified according to the McKee et al.
+    (1993) scale.  API, SMI, and Total Runoff act as secondary modifiers:
+    when any of them falls below its historical low-percentile threshold,
     risk is elevated one level because persistently low antecedent moisture
-    amplifies drought severity.
+    and soil water amplify drought severity.
 
     Risk mapping (SPEI primary):
 
@@ -1091,8 +1090,11 @@ class DroughtRiskClassifier:
     Parameters
     ----------
     api_low_percentile : float
-        Quantile (0–1) of API below which drought risk is elevated by one
-        level.  Default is the 25th percentile.
+        Quantile (0–1) of API below which drought risk is elevated.
+    smi_low_percentile : float
+        Quantile (0–1) of SMI below which drought risk is elevated.
+    ro_low_percentile : float
+        Quantile (0–1) of total_ro below which drought risk is elevated.
 
     References
     ----------
@@ -1113,23 +1115,35 @@ class DroughtRiskClassifier:
         (-0.5, RiskLevel.MODERATE),
     ]
 
-    def __init__(self, api_low_percentile: float = 0.25) -> None:
+    def __init__(
+        self,
+        api_low_percentile: float = 0.25,
+        smi_low_percentile: float = 0.25,
+        ro_low_percentile: float = 0.25,
+    ) -> None:
         self.api_low_percentile = api_low_percentile
+        self.smi_low_percentile = smi_low_percentile
+        self.ro_low_percentile = ro_low_percentile
         self._api_cutoff: Optional[float] = None
+        self._smi_cutoff: Optional[float] = None
+        self._ro_cutoff: Optional[float] = None
 
     def fit(self, df: pd.DataFrame) -> "DroughtRiskClassifier":
-        """Compute the API cutoff from training data.
+        """Compute secondary-indicator cutoffs from training data.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Training DataFrame with an ``'api'`` column.
+            Training DataFrame with ``'api'``, ``'smi'``, and
+            ``'total_ro'`` columns.
 
         Returns
         -------
         self
         """
         self._api_cutoff = float(df["api"].quantile(self.api_low_percentile))
+        self._smi_cutoff = float(df["smi"].quantile(self.smi_low_percentile))
+        self._ro_cutoff = float(df["total_ro"].quantile(self.ro_low_percentile))
         return self
 
     @staticmethod
@@ -1153,7 +1167,8 @@ class DroughtRiskClassifier:
         Parameters
         ----------
         df : pd.DataFrame
-            DataFrame with ``'spei'`` and ``'api'`` columns.
+            DataFrame with ``'spei'``, ``'api'``, ``'smi'``, and
+            ``'total_ro'`` columns.
 
         Returns
         -------
@@ -1164,9 +1179,15 @@ class DroughtRiskClassifier:
             raise RuntimeError("Call .fit() before .classify().")
 
         risks = []
-        for _, row in df[["spei", "api"]].iterrows():
+        for _, row in df[["spei", "api", "smi", "total_ro"]].iterrows():
             risk = self._spei_to_base_risk(row["spei"])
-            if row["api"] < self._api_cutoff and risk != RiskLevel.EXTREME:
+            # Elevate if any secondary indicator signals dry conditions.
+            # Skip when SPEI is already LOW or EXTREME to avoid inflation.
+            if risk not in (RiskLevel.LOW, RiskLevel.EXTREME) and any([
+                row["api"] < self._api_cutoff,
+                row["smi"] < self._smi_cutoff,
+                row["total_ro"] < self._ro_cutoff,
+            ]):
                 risk = self._elevate(risk)
             risks.append(risk)
         return pd.Series(risks, index=df.index, name="drought_risk")
@@ -1175,6 +1196,8 @@ class DroughtRiskClassifier:
         self,
         spei_pred: pd.Series,
         api_pred: pd.Series,
+        smi_pred: pd.Series,
+        total_ro_pred: pd.Series,
     ) -> pd.Series:
         """Classify drought risk from predicted index series.
 
@@ -1184,33 +1207,46 @@ class DroughtRiskClassifier:
             Predicted SPEI values.
         api_pred : pd.Series
             Predicted API values.
+        smi_pred : pd.Series
+            Predicted SMI values.
+        total_ro_pred : pd.Series
+            Predicted Total Runoff values.
 
         Returns
         -------
         pd.Series of RiskLevel
         """
-        df = pd.DataFrame({"spei": spei_pred, "api": api_pred})
+        df = pd.DataFrame({
+            "spei": spei_pred,
+            "api": api_pred,
+            "smi": smi_pred,
+            "total_ro": total_ro_pred,
+        })
         return self.classify(df)
 
 
 class FloodRiskClassifier:
-    """Classify flood risk from SMI and Total Runoff.
+    """Classify flood risk from SPEI, API, SMI, and Total Runoff.
 
     A composite flood score is computed as a weighted average of the
-    Min-Max normalised Soil Moisture Index (SMI) and the normalised total
-    runoff.  Score thresholds are derived from the empirical percentile
-    distribution of the training data, making the classification adaptive
-    to local hydro-climatic conditions.
+    Min-Max normalised values of all four indices.  Score thresholds are
+    derived from the empirical percentile distribution of the training data,
+    making the classification adaptive to local hydro-climatic conditions.
 
     Composite score:
-        flood_score = smi_weight * norm_smi + runoff_weight * norm_total_ro
+        flood_score = (spei_weight * norm_spei + api_weight * norm_api
+                       + smi_weight * norm_smi + runoff_weight * norm_total_ro)
 
     Parameters
     ----------
+    spei_weight : float
+        Weight assigned to SPEI in the composite score (default: 0.25).
+    api_weight : float
+        Weight assigned to API in the composite score (default: 0.25).
     smi_weight : float
-        Weight assigned to SMI in the composite score (default: 0.5).
+        Weight assigned to SMI in the composite score (default: 0.25).
     runoff_weight : float
-        Weight assigned to total runoff in the composite score (default: 0.5).
+        Weight assigned to total runoff in the composite score (default: 0.25).
     percentile_thresholds : dict, optional
         Mapping of ``{RiskLevel: quantile}`` that defines score breakpoints.
 
@@ -1226,24 +1262,30 @@ class FloodRiskClassifier:
     """
 
     _DEFAULT_PERCENTILES: Dict[RiskLevel, float] = {
-        RiskLevel.LOW: 0.40,
-        RiskLevel.MODERATE: 0.60,
-        RiskLevel.ELEVATED: 0.75,
-        RiskLevel.HIGH: 0.90,
+        RiskLevel.LOW: 0.65,
+        RiskLevel.MODERATE: 0.80,
+        RiskLevel.ELEVATED: 0.90,
+        RiskLevel.HIGH: 0.97,
         RiskLevel.EXTREME: 1.00,
     }
 
     def __init__(
         self,
-        smi_weight: float = 0.5,
-        runoff_weight: float = 0.5,
+        spei_weight: float = 0.25,
+        api_weight: float = 0.25,
+        smi_weight: float = 0.25,
+        runoff_weight: float = 0.25,
         percentile_thresholds: Optional[Dict[RiskLevel, float]] = None,
     ) -> None:
+        self.spei_weight = spei_weight
+        self.api_weight = api_weight
         self.smi_weight = smi_weight
         self.runoff_weight = runoff_weight
         self._percentile_thresholds = (
             percentile_thresholds or self._DEFAULT_PERCENTILES
         )
+        self._spei_scaler = MinMaxScaler()
+        self._api_scaler = MinMaxScaler()
         self._smi_scaler = MinMaxScaler()
         self._ro_scaler = MinMaxScaler()
         self._score_cutoffs: Optional[Dict[RiskLevel, float]] = None
@@ -1254,12 +1296,15 @@ class FloodRiskClassifier:
         Parameters
         ----------
         df : pd.DataFrame
-            Training DataFrame with ``'smi'`` and ``'total_ro'`` columns.
+            Training DataFrame with ``'spei'``, ``'api'``, ``'smi'``, and
+            ``'total_ro'`` columns.
 
         Returns
         -------
         self
         """
+        self._spei_scaler.fit(df[["spei"]])
+        self._api_scaler.fit(df[["api"]])
         self._smi_scaler.fit(df[["smi"]])
         self._ro_scaler.fit(df[["total_ro"]])
         scores = self._compute_scores(df)
@@ -1271,10 +1316,15 @@ class FloodRiskClassifier:
 
     def _compute_scores(self, df: pd.DataFrame) -> pd.Series:
         """Compute the composite flood score for each row."""
+        norm_spei = self._spei_scaler.transform(df[["spei"]]).flatten()
+        norm_api = self._api_scaler.transform(df[["api"]]).flatten()
         norm_smi = self._smi_scaler.transform(df[["smi"]]).flatten()
         norm_ro = self._ro_scaler.transform(df[["total_ro"]]).flatten()
         return pd.Series(
-            self.smi_weight * norm_smi + self.runoff_weight * norm_ro,
+            self.spei_weight * norm_spei
+            + self.api_weight * norm_api
+            + self.smi_weight * norm_smi
+            + self.runoff_weight * norm_ro,
             index=df.index,
         )
 
@@ -1293,7 +1343,8 @@ class FloodRiskClassifier:
         Parameters
         ----------
         df : pd.DataFrame
-            DataFrame with ``'smi'`` and ``'total_ro'`` columns.
+            DataFrame with ``'spei'``, ``'api'``, ``'smi'``, and
+            ``'total_ro'`` columns.
 
         Returns
         -------
@@ -1306,6 +1357,8 @@ class FloodRiskClassifier:
 
     def classify_from_predictions(
         self,
+        spei_pred: pd.Series,
+        api_pred: pd.Series,
         smi_pred: pd.Series,
         total_ro_pred: pd.Series,
     ) -> pd.Series:
@@ -1313,6 +1366,10 @@ class FloodRiskClassifier:
 
         Parameters
         ----------
+        spei_pred : pd.Series
+            Predicted SPEI values.
+        api_pred : pd.Series
+            Predicted API values.
         smi_pred : pd.Series
             Predicted SMI values.
         total_ro_pred : pd.Series
@@ -1322,5 +1379,10 @@ class FloodRiskClassifier:
         -------
         pd.Series of RiskLevel
         """
-        df = pd.DataFrame({"smi": smi_pred, "total_ro": total_ro_pred})
+        df = pd.DataFrame({
+            "spei": spei_pred,
+            "api": api_pred,
+            "smi": smi_pred,
+            "total_ro": total_ro_pred,
+        })
         return self.classify(df)

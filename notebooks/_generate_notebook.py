@@ -652,9 +652,13 @@ code("""\
 future_drought = drought_clf.classify_from_predictions(
     spei_pred=future_preds["spei"],
     api_pred=future_preds["api"],
+    smi_pred=future_preds["smi"],
+    total_ro_pred=future_preds["total_ro"],
 )
 
 future_flood = flood_clf.classify_from_predictions(
+    spei_pred=future_preds["spei"],
+    api_pred=future_preds["api"],
     smi_pred=future_preds["smi"],
     total_ro_pred=future_preds["total_ro"],
 )
