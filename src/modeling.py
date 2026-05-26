@@ -283,8 +283,9 @@ def check_stationarity(
 def build_lag_features(
     series: pd.Series,
     lags: List[int],
+    include_cyclical: bool = True,
 ) -> pd.DataFrame:
-    """Build a feature matrix of lagged values and seasonal encodings.
+    """Build a feature matrix of lagged values and optional seasonal encodings.
 
     Parameters
     ----------
@@ -292,6 +293,9 @@ def build_lag_features(
         Input time series with a DatetimeIndex.
     lags : list of int
         Lag periods to include as features.
+    include_cyclical : bool
+        When True (default), adds sine/cosine encodings of month and day-of-year.
+        Set to False for a pure autoregressive feature set.
 
     Returns
     -------
@@ -302,10 +306,11 @@ def build_lag_features(
     df = series.to_frame(name=name)
     for lag in lags:
         df[f"lag_{lag}"] = df[name].shift(lag)
-    df["month_sin"] = np.sin(2 * np.pi * df.index.month / 12)
-    df["month_cos"] = np.cos(2 * np.pi * df.index.month / 12)
-    df["doy_sin"] = np.sin(2 * np.pi * df.index.dayofyear / 365.25)
-    df["doy_cos"] = np.cos(2 * np.pi * df.index.dayofyear / 365.25)
+    if include_cyclical:
+        df["month_sin"] = np.sin(2 * np.pi * df.index.month / 12)
+        df["month_cos"] = np.cos(2 * np.pi * df.index.month / 12)
+        df["doy_sin"] = np.sin(2 * np.pi * df.index.dayofyear / 365.25)
+        df["doy_cos"] = np.cos(2 * np.pi * df.index.dayofyear / 365.25)
     return df.dropna()
 
 
@@ -554,22 +559,23 @@ class HoltWintersForecaster(BaseForecaster):
         self._result = None
 
     def fit(self, train: pd.Series) -> "HoltWintersForecaster":
-        """Fit Holt-Winters on the monthly training series.
+        """Fit Holt-Winters on the training series.
 
         Parameters
         ----------
         train : pd.Series
-            Monthly training observations.
+            Training observations.
 
         Returns
         -------
         self
         """
+        sp = self.seasonal_periods if self.seasonal is not None else None
         model = ExponentialSmoothing(
             train.dropna(),
             trend=self.trend,
             seasonal=self.seasonal,
-            seasonal_periods=self.seasonal_periods,
+            seasonal_periods=sp,
             initialization_method="estimated",
         )
         self._result = model.fit(optimized=True)
@@ -641,11 +647,13 @@ class RandomForestForecaster(BaseForecaster):
         lags: Optional[List[int]] = None,
         n_estimators: int = 200,
         random_state: int = 42,
+        include_cyclical: bool = True,
     ) -> None:
         super().__init__(target_column)
         self.lags = lags or [1, 2, 3, 6, 12]
         self.n_estimators = n_estimators
         self.random_state = random_state
+        self.include_cyclical = include_cyclical
         self._model = RandomForestRegressor(
             n_estimators=n_estimators,
             random_state=random_state,
@@ -668,7 +676,7 @@ class RandomForestForecaster(BaseForecaster):
         -------
         self
         """
-        df = build_lag_features(train, self.lags)
+        df = build_lag_features(train, self.lags, include_cyclical=self.include_cyclical)
         self._feature_cols = [c for c in df.columns if c != self.target_column]
         X = df[self._feature_cols].values
         y = df[self.target_column].values
@@ -695,7 +703,7 @@ class RandomForestForecaster(BaseForecaster):
         """
         self._require_fitted()
         combined = pd.concat([self._train, test])
-        df = build_lag_features(combined, self.lags)
+        df = build_lag_features(combined, self.lags, include_cyclical=self.include_cyclical)
         test_df = df.loc[test.index.intersection(df.index)]
         X = test_df[self._feature_cols].values
         preds = self._model.predict(X)
@@ -726,11 +734,15 @@ class RandomForestForecaster(BaseForecaster):
         preds = []
         for date in future_dates:
             lag_vals = [history[-(lag)] for lag in self.lags]
-            month_sin = np.sin(2 * np.pi * date.month / 12)
-            month_cos = np.cos(2 * np.pi * date.month / 12)
-            doy_sin = np.sin(2 * np.pi * date.dayofyear / 365.25)
-            doy_cos = np.cos(2 * np.pi * date.dayofyear / 365.25)
-            X = np.array(lag_vals + [month_sin, month_cos, doy_sin, doy_cos]).reshape(1, -1)
+            if self.include_cyclical:
+                month_sin = np.sin(2 * np.pi * date.month / 12)
+                month_cos = np.cos(2 * np.pi * date.month / 12)
+                doy_sin = np.sin(2 * np.pi * date.dayofyear / 365.25)
+                doy_cos = np.cos(2 * np.pi * date.dayofyear / 365.25)
+                features = lag_vals + [month_sin, month_cos, doy_sin, doy_cos]
+            else:
+                features = lag_vals
+            X = np.array(features).reshape(1, -1)
             pred = float(self._model.predict(X)[0])
             preds.append(pred)
             history.append(pred)
@@ -745,6 +757,308 @@ class RandomForestForecaster(BaseForecaster):
             pd.Series(self._model.feature_importances_, index=self._feature_cols)
             .sort_values(ascending=False)
         )
+
+
+class XGBoostForecaster(BaseForecaster):
+    """XGBoost gradient-boosting forecaster via lag-feature engineering.
+
+    Shares the same autoregressive feature set as ``RandomForestForecaster``
+    but uses gradient-boosted trees, which often achieve lower bias through
+    sequential error correction.
+
+    Parameters
+    ----------
+    target_column : str
+    lags : list of int
+    n_estimators : int
+    max_depth : int
+    learning_rate : float
+    random_state : int
+    include_cyclical : bool
+
+    References
+    ----------
+    Chen, T., & Guestrin, C. (2016). XGBoost: A Scalable Tree Boosting
+        System. KDD '16. https://doi.org/10.1145/2939672.2939785
+    """
+
+    def __init__(
+        self,
+        target_column: str,
+        lags: Optional[List[int]] = None,
+        n_estimators: int = 200,
+        max_depth: int = 6,
+        learning_rate: float = 0.05,
+        random_state: int = 42,
+        include_cyclical: bool = True,
+    ) -> None:
+        super().__init__(target_column)
+        self.lags = lags or [1, 2, 3, 6, 12]
+        self.n_estimators = n_estimators
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.random_state = random_state
+        self.include_cyclical = include_cyclical
+        self._feature_cols: List[str] = []
+        self._train: Optional[pd.Series] = None
+        self._model = None
+
+    def _build_model(self):
+        try:
+            from xgboost import XGBRegressor
+        except ImportError:
+            raise ImportError("xgboost is required: pip install xgboost")
+        return XGBRegressor(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            random_state=self.random_state,
+            verbosity=0,
+            n_jobs=-1,
+        )
+
+    def fit(self, train: pd.Series) -> "XGBoostForecaster":
+        self._model = self._build_model()
+        df = build_lag_features(train, self.lags, include_cyclical=self.include_cyclical)
+        self._feature_cols = [c for c in df.columns if c != self.target_column]
+        self._model.fit(df[self._feature_cols].values, df[self.target_column].values)
+        self._train = train
+        self._is_fitted = True
+        return self
+
+    def predict_in_sample(self, test: pd.Series) -> pd.Series:
+        self._require_fitted()
+        combined = pd.concat([self._train, test])
+        df = build_lag_features(combined, self.lags, include_cyclical=self.include_cyclical)
+        test_df = df.loc[test.index.intersection(df.index)]
+        preds = self._model.predict(test_df[self._feature_cols].values)
+        return pd.Series(preds, index=test_df.index, name=self.target_column)
+
+    def predict(self, steps: int) -> pd.Series:
+        self._require_fitted()
+        history = list(self._train.dropna().values)
+        freq = pd.infer_freq(self._train.index) or "D"
+        last_date = self._train.index[-1]
+        future_dates = pd.date_range(last_date, periods=steps + 1, freq=freq)[1:]
+
+        preds = []
+        for date in future_dates:
+            lag_vals = [history[-(lag)] for lag in self.lags]
+            if self.include_cyclical:
+                features = lag_vals + [
+                    np.sin(2 * np.pi * date.month / 12),
+                    np.cos(2 * np.pi * date.month / 12),
+                    np.sin(2 * np.pi * date.dayofyear / 365.25),
+                    np.cos(2 * np.pi * date.dayofyear / 365.25),
+                ]
+            else:
+                features = lag_vals
+            pred = float(self._model.predict(np.array(features).reshape(1, -1))[0])
+            preds.append(pred)
+            history.append(pred)
+
+        return pd.Series(preds, index=future_dates, name=self.target_column)
+
+    @property
+    def feature_importances(self) -> pd.Series:
+        """Feature importances sorted descending."""
+        self._require_fitted()
+        return (
+            pd.Series(self._model.feature_importances_, index=self._feature_cols)
+            .sort_values(ascending=False)
+        )
+
+
+class LSTMForecaster(BaseForecaster):
+    """LSTM (Long Short-Term Memory) forecaster using Keras/TensorFlow.
+
+    Models the series as a sequence-to-one problem: a sliding window of
+    ``lookback`` timesteps is used to predict the next value. Multi-step
+    predictions are generated recursively. Values are Min-Max scaled before
+    training and inverse-transformed on output.
+
+    Parameters
+    ----------
+    target_column : str
+    lookback : int
+        Number of past timesteps used as input sequence (default 30).
+    units : int
+        Number of LSTM units in the hidden layer.
+    epochs : int
+    batch_size : int
+    random_state : int
+
+    References
+    ----------
+    Hochreiter, S., & Schmidhuber, J. (1997). Long Short-Term Memory.
+        Neural Computation, 9(8), 1735–1780.
+    """
+
+    def __init__(
+        self,
+        target_column: str,
+        lookback: int = 30,
+        units: int = 64,
+        epochs: int = 20,
+        batch_size: int = 64,
+        random_state: int = 42,
+    ) -> None:
+        super().__init__(target_column)
+        self.lookback = lookback
+        self.units = units
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.random_state = random_state
+        self._scaler = MinMaxScaler()
+        self._keras_model = None
+        self._train: Optional[pd.Series] = None
+
+    @staticmethod
+    def _build_sequences(values: np.ndarray, lookback: int):
+        X, y = [], []
+        for i in range(lookback, len(values)):
+            X.append(values[i - lookback:i])
+            y.append(values[i])
+        return np.array(X)[..., np.newaxis], np.array(y)
+
+    def fit(self, train: pd.Series) -> "LSTMForecaster":
+        try:
+            import tensorflow as tf
+            from tensorflow.keras.models import Sequential
+            from tensorflow.keras.layers import LSTM, Dense, Dropout
+        except ImportError:
+            raise ImportError("tensorflow is required: pip install tensorflow")
+
+        tf.random.set_seed(self.random_state)
+        np.random.seed(self.random_state)
+
+        values = train.dropna().values.reshape(-1, 1)
+        scaled = self._scaler.fit_transform(values).flatten()
+        X, y = self._build_sequences(scaled, self.lookback)
+
+        model = Sequential([
+            LSTM(self.units, input_shape=(self.lookback, 1)),
+            Dropout(0.1),
+            Dense(1),
+        ])
+        model.compile(optimizer="adam", loss="mse")
+        model.fit(X, y, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
+
+        self._keras_model = model
+        self._train = train
+        self._is_fitted = True
+        return self
+
+    def predict_in_sample(self, test: pd.Series) -> pd.Series:
+        self._require_fitted()
+        combined = pd.concat([self._train, test]).dropna()
+        scaled = self._scaler.transform(combined.values.reshape(-1, 1)).flatten()
+        train_len = len(self._train.dropna())
+
+        preds_scaled = []
+        for i in range(train_len, len(scaled)):
+            seq = scaled[i - self.lookback:i].reshape(1, self.lookback, 1)
+            preds_scaled.append(float(self._keras_model.predict(seq, verbose=0)[0][0]))
+
+        preds = self._scaler.inverse_transform(
+            np.array(preds_scaled).reshape(-1, 1)
+        ).flatten()
+        return pd.Series(preds, index=test.index[:len(preds)], name=self.target_column)
+
+    def predict(self, steps: int) -> pd.Series:
+        self._require_fitted()
+        scaled = self._scaler.transform(
+            self._train.dropna().values.reshape(-1, 1)
+        ).flatten().tolist()
+
+        freq = pd.infer_freq(self._train.index) or "D"
+        last_date = self._train.index[-1]
+        future_dates = pd.date_range(last_date, periods=steps + 1, freq=freq)[1:]
+
+        preds_scaled = []
+        for _ in future_dates:
+            seq = np.array(scaled[-self.lookback:]).reshape(1, self.lookback, 1)
+            pred = float(self._keras_model.predict(seq, verbose=0)[0][0])
+            preds_scaled.append(pred)
+            scaled.append(pred)
+
+        preds = self._scaler.inverse_transform(
+            np.array(preds_scaled).reshape(-1, 1)
+        ).flatten()
+        return pd.Series(preds, index=future_dates, name=self.target_column)
+
+
+class ProphetForecaster(BaseForecaster):
+    """Facebook Prophet forecaster for trend + seasonality decomposition.
+
+    Prophet decomposes the series into trend, yearly seasonality, and optional
+    weekly seasonality. Well-suited for daily climate indices with strong annual
+    cycles. Predictions are made directly for requested future dates without
+    recursive accumulation of error.
+
+    Parameters
+    ----------
+    target_column : str
+    yearly_seasonality : bool
+    weekly_seasonality : bool
+    changepoint_prior_scale : float
+        Controls trend flexibility; higher values allow more breakpoints.
+
+    References
+    ----------
+    Taylor, S. J., & Letham, B. (2018). Forecasting at Scale. The American
+        Statistician, 72(1), 37–45. https://doi.org/10.1080/00031305.2017.1380080
+    """
+
+    def __init__(
+        self,
+        target_column: str,
+        yearly_seasonality: bool = True,
+        weekly_seasonality: bool = False,
+        changepoint_prior_scale: float = 0.05,
+    ) -> None:
+        super().__init__(target_column)
+        self.yearly_seasonality = yearly_seasonality
+        self.weekly_seasonality = weekly_seasonality
+        self.changepoint_prior_scale = changepoint_prior_scale
+        self._prophet_model = None
+        self._train: Optional[pd.Series] = None
+
+    def fit(self, train: pd.Series) -> "ProphetForecaster":
+        try:
+            from prophet import Prophet
+        except ImportError:
+            raise ImportError("prophet is required: pip install prophet")
+
+        df = train.dropna().reset_index()
+        df.columns = ["ds", "y"]
+
+        model = Prophet(
+            yearly_seasonality=self.yearly_seasonality,
+            weekly_seasonality=self.weekly_seasonality,
+            daily_seasonality=False,
+            changepoint_prior_scale=self.changepoint_prior_scale,
+        )
+        model.fit(df)
+
+        self._prophet_model = model
+        self._train = train
+        self._is_fitted = True
+        return self
+
+    def predict_in_sample(self, test: pd.Series) -> pd.Series:
+        self._require_fitted()
+        future = pd.DataFrame({"ds": test.index})
+        forecast = self._prophet_model.predict(future)
+        return pd.Series(forecast["yhat"].values, index=test.index, name=self.target_column)
+
+    def predict(self, steps: int) -> pd.Series:
+        self._require_fitted()
+        freq = pd.infer_freq(self._train.index) or "D"
+        last_date = self._train.index[-1]
+        future_dates = pd.date_range(last_date, periods=steps + 1, freq=freq)[1:]
+        forecast = self._prophet_model.predict(pd.DataFrame({"ds": future_dates}))
+        return pd.Series(forecast["yhat"].values, index=future_dates, name=self.target_column)
 
 
 # ---------------------------------------------------------------------------

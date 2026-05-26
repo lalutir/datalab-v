@@ -7,6 +7,7 @@ azure-storage-blob>=12.19.0
 adlfs>=2024.2.0
 pandas>=2.1.0
 pyarrow>=14.0.0
+openpyxl>=3.1.0
 pyyaml>=6.0
 python-dotenv>=1.0.0
 fsspec>=2024.2.0
@@ -19,3 +20,8 @@ scikit-learn>=1.4.0
 matplotlib>=3.8.0
 seaborn>=0.13.0
 nbformat>=5.9.0
+
+# Baselinemodellen
+xgboost>=2.0.0
+tensorflow>=2.15.0
+prophet>=1.1.5
