@@ -72,5 +72,5 @@ processing:
 
 # Output settings
 output:
-  dir: "data/processed"
+  dir: "src/data/processed"
   format: "parquet"  # Options: zarr, parquet, both

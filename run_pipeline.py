@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import load_config
-from src.storage import download_selected_blobs
+# from src.storage import download_selected_blobs
 from src.loader import open_era5_multiple
 from src.subset import apply_all_filters
 from src.aggregate import resample_dataset
@@ -37,13 +37,13 @@ def setup_logging() -> None:
     logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
 
 
-def make_year_config(config, year: int):
+def make_year_config(config, year: int): # type: ignore
     """Return a deep copy of config with blob_files and time range set for the given year."""
-    yc = copy.deepcopy(config)
-    yc.selection.blob_files = [f"{year}_{month:02d}" for month in range(1, 13)]
-    yc.selection.time_start = f"{year}-01-01"
-    yc.selection.time_end = f"{year}-12-31"
-    return yc
+    yc = copy.deepcopy(config) # type: ignore
+    yc.selection.blob_files = [f"{year}_{month:02d}" for month in range(1, 13)] # type: ignore
+    yc.selection.time_start = f"{year}-01-01" # type: ignore
+    yc.selection.time_end = f"{year}-12-31" # type: ignore
+    return yc # type: ignore
 
 
 def main() -> None:
@@ -77,13 +77,18 @@ def main() -> None:
         year_config = make_year_config(config, year)
 
         try:
-            # Step 1: Download all 12 monthly ZIPs and extract NC files
-            logger.info("[%d] Step 1: Downloading 12 monthly ZIPs from Azure...", year)
-            local_paths = download_selected_blobs(year_config)
-            logger.info("[%d] %d file(s) ready", year, len(local_paths))
+            # # Step 1: Download all 12 monthly ZIPs and extract NC files
+            # logger.info("[%d] Step 1: Downloading 12 monthly ZIPs from Azure...", year)
+            # local_paths = download_selected_blobs(year_config)
+            # logger.info("[%d] %d file(s) ready", year, len(local_paths))
 
             # Step 2: Open all files lazily (instant+accum merged per month, months concatenated)
             logger.info("[%d] Step 2: Opening datasets lazily...", year)
+            raw_dir = config.raw_dir
+            local_paths1 = [raw_dir / f"era5_{year}_{month:02d}" / "data_stream-oper_stepType-accum.nc" for month in range(1, 13)]
+            local_paths2 = [raw_dir / f"era5_{year}_{month:02d}" / "data_stream-oper_stepType-instant.nc" for month in range(1, 13)]
+            local_paths = local_paths1 + local_paths2
+            local_paths.sort(key=lambda p: (p.stem.split("_")[0], p.stem.split("_")[1], "instant" in p.name))
             ds = open_era5_multiple(local_paths, year_config)
 
             # Step 3: Apply variable, time, and bbox filters (single-point selection)
@@ -117,7 +122,10 @@ def main() -> None:
     logger.info("Combined shape: %d rows × %d columns", len(df_all), len(df_all.columns))
 
     # Compute climate indices
-    logger.info("Computing climate indices (API, SPEI, SMI, Total Runoff)...")
+    logger.info(
+        "Computing climate indices: api_92 (k=0.92), smi_fc (FC=0.323 m³/m³), "
+        "spei_6/spei_12 (monthly, calib ≤ 2020), total_ro..."
+    )
     df_all = add_indices(df_all)
     logger.info("Indices added. Final shape: %d rows × %d columns", len(df_all), len(df_all.columns))
 

@@ -73,7 +73,7 @@ class PipelineConfig:
     selection: SelectionConfig = field(default_factory=SelectionConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    raw_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "raw")
+    raw_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "src" / "data" / "raw")
 
 
 def load_config(config_path: Optional[Path] = None) -> PipelineConfig:
