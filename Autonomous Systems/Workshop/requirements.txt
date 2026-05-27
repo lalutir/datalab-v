@@ -1,0 +1,25 @@
+# ── Core deep learning ─────────────────────────────────────────────────────
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Atari environment ──────────────────────────────────────────────────────
+# gymnasium[atari] installs ale-py automatically
+gymnasium[atari]>=0.29.0
+ale-py>=0.9.0
+# AutoROM downloads the Atari ROMs and accepts the license
+AutoROM[accept-rom-license]>=0.6.1
+
+# ── Image processing ───────────────────────────────────────────────────────
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# ── Numerics & plotting ────────────────────────────────────────────────────
+numpy>=1.24.0
+matplotlib>=3.7.0
+
+# ── Progress bars ──────────────────────────────────────────────────────────
+tqdm>=4.65.0
+
+# ── Notebook runtime ───────────────────────────────────────────────────────
+jupyter>=1.0.0
+ipykernel>=6.25.0
