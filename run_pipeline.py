@@ -130,15 +130,14 @@ def main() -> None:
     logger.info("Indices added. Final shape: %d rows × %d columns", len(df_all), len(df_all.columns))
 
     # Export single combined Parquet
-    out_dir = config.output.dir
-    out_dir.mkdir(parents=True, exist_ok=True)
-    label = f"era5_{config.selection.year_start}_{config.selection.year_end}"
+    out_dir = Path('src/data/processed')
+    label = "era5_final"
     out_path = out_dir / f"{label}.parquet"
     df_all.to_parquet(str(out_path), index=False)
     size_mb = out_path.stat().st_size / 1e6
     logger.info(
         "Exported combined dataset: %s (%d rows, %d cols, %.1f MB)",
-        out_path.name,
+        out_path.name, #type: ignore
         len(df_all),
         len(df_all.columns),
         size_mb,

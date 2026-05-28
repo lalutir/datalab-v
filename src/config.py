@@ -147,7 +147,7 @@ def load_config(config_path: Optional[Path] = None) -> PipelineConfig:
         selection=selection,
         processing=processing,
         output=output,
-        raw_dir=PROJECT_ROOT / "data" / "raw",
+        raw_dir=PROJECT_ROOT / "src" / "data" / "raw",
     )
 
     logger.debug("Config loaded: years=%d-%d, variables=%s", selection.year_start, selection.year_end, selection.variables)
