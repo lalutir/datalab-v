@@ -3,7 +3,7 @@ drought_risk_t_plus_1,0.9909
 drought_risk_t_plus_3,0.9725
 drought_risk_t_plus_7,0.9356
 drought_risk_t_plus_14,0.8718
-flood_risk_t_plus_1,0.895
-flood_risk_t_plus_3,0.7667
-flood_risk_t_plus_7,0.6905
-flood_risk_t_plus_14,0.6238
+flood_risk_t_plus_1,0.9005
+flood_risk_t_plus_3,0.7786
+flood_risk_t_plus_7,0.6961
+flood_risk_t_plus_14,0.6257
