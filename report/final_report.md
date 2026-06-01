@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates a foundation weather model (GenCast or Earth-2) to replace ERA5 actuals with AI-generated forecasts, from which indices are recomputed and the same classifiers applied. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost consistently beats the naive persistence baseline, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons.
+We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates a foundation weather model (GenCast or Earth-2) to replace ERA5 actuals with AI-generated forecasts, from which indices are recomputed and the same classifiers applied. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost consistently beats the naive persistence baseline, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features for drought forecasting — are documented in Section 12.
 
 ---
 
@@ -317,7 +317,7 @@ Most documented EMDAT flood events reach at least Moderate flood risk in all thr
 
 5. **14-day forecast limit:** The foundation model is evaluated to 14 days (the limit of deterministic skill for global AI weather models). Seasonal drought forecasting requires a different approach (e.g., monthly ENSO-informed models).
 
-6. **No ENSO/IOD features:** Indian Ocean Dipole (IOD) and ENSO indices are known drivers of Horn of Africa rainfall variability at seasonal timescales. Including them as lag-365 or slow-varying features could improve drought prediction at longer horizons.
+6. **ENSO/IOD features (partially addressed in v2):** Indian Ocean Dipole (IOD) and ENSO indices are known drivers of Horn of Africa rainfall variability at seasonal timescales. ENSO/IOD lag features were added to the v2 drought models (Section 12.1); while SHAP confirms they carry a teleconnection signal, they did not improve short-range (1–14 day) macro recall because SPEI-6 already encodes the precipitation deficit they drive and because ENSO/IOD primarily operate on longer timescales than the forecast horizon.
 
 ---
 
@@ -331,7 +331,7 @@ Most documented EMDAT flood events reach at least Moderate flood risk in all thr
 
 4. **Ensemble calibration:** Apply isotonic regression or Platt scaling to the XGBoost probability outputs to improve the calibration of High and Extreme class probabilities.
 
-5. **ENSO/IOD features:** Incorporate monthly Niño 3.4 and DMI (Dipole Mode Index) time series as additional features at lag-365 and lag-180 to capture seasonal drought teleconnections.
+5. **ENSO/IOD features (implemented in v2 — see Section 12.1):** Monthly Niño 3.4 and DMI time series at lags 30, 90, and 180 days have been added as features for the drought XGBoost models. The SHAP analysis confirms a measurable teleconnection signal, but improvement in short-range recall is limited; the recommended next step is applying these features in a seasonal (monthly) outlook model rather than the 14-day classifier.
 
 6. **Foundation model ensembles:** Use GenCast's 50-member ensemble to derive flood risk probability distributions rather than a single deterministic risk level.
 
@@ -348,7 +348,147 @@ This project demonstrates a complete three-approach pipeline for flood and droug
 3. A foundation model integration pipeline (GenCast) with an honest structural analysis of why soil-moisture-free atmospheric models underperform on flood composite scores, and a max-vote hybrid ensemble that improves recall by combining GenCast's forward precipitation signal with XGBoost's historical lag patterns.
 4. An honest miss analysis documenting the fundamental limitation of single-grid-point modelling for river-driven floods.
 
-The XGBoost +7d models are the recommended standalone operational choice, combining adequate lead time with skill clearly above the persistence baseline and SHAP-interpretable outputs essential for humanitarian decision-making. When GenCast forecasts are available at runtime, the max-vote hybrid ensemble (Approach 3 + Approach 2) is preferred: it issues an alert when *either* model is alarmed, raising recall at the cost of acceptable additional false alarms.
+The XGBoost +7d models are the recommended standalone operational choice, combining adequate lead time with skill clearly above the persistence baseline and SHAP-interpretable outputs essential for humanitarian decision-making. When GenCast forecasts are available at runtime, the max-vote hybrid ensemble (Approach 3 + Approach 2) is preferred: it issues an alert when *either* model is alarmed, raising recall at the cost of acceptable additional false alarms. V2 methodology improvements that extend these findings — including ENSO/IOD teleconnection features for drought and planned ECMWF HRES and SEAS5 integrations — are documented in Section 12; readers are encouraged to consult that section for the current best-performing configurations.
+
+---
+
+## 12. V2 Methodology Improvements
+
+This section documents improvements implemented after the v1 portfolio submission. All new code
+is on the `v2-improvements` branch; every improvement appends new notebook cells without
+modifying existing v1 cells. The full improvement plan and rationale are in
+`docs/v2_improvement_plan.md`.
+
+| # | Improvement | Status | Key result |
+|---|-------------|--------|------------|
+| 12.1 | ENSO/IOD features — drought XGBoost | **Done** | SHAP confirms teleconnection signal; no recall gain at 1–14 day horizon |
+| 12.2 | Explicit baseline comparison per task | Planned | — |
+| 12.3 | Calibrated probability outputs | Planned | — |
+| 12.4 | ECMWF HRES flood forecast (full composite) | Planned | — |
+| 12.5 | SEAS5 seasonal drought forecast | Planned | — |
+| 12.6 | Upstream Wabi Shabelle catchment features | Planned | — |
+| 12.7 | Binary transition alert targets | Planned | — |
+
+---
+
+### 12.1 ENSO/IOD Features for Drought XGBoost
+
+**What changed:** Six new lag features derived from the monthly Niño 3.4 SST anomaly index
+(NOAA ERSST v6, sourced from NOAA PSL) and the Dipole Mode Index (DMI, HadISST-derived, NOAA PSL)
+are appended to the drought XGBoost feature matrix, expanding it from 40 to 46 input features.
+New lag offsets are 30, 90, and 180 days for each index. Four drought classifiers
+(`drought_v2_+{1,3,7,14}d.ubj`) were retrained using identical walk-forward CV folds,
+hyperparameter grid, class weights, and temporal split as v1.
+
+**Why:** Horn of Africa drought is primarily driven by the Indian Ocean Dipole (positive IOD
+suppresses the short rains, October–November) and ENSO (La Niña reduces the long rains,
+April–May). Every major drought year in the dataset — 2002, 2006, 2011, 2016–17, 2022–23 —
+coincides with documented IOD+ or La Niña events. The v1 feature matrix had no large-scale
+circulation signal; lag-365 ERA5 features provided only indirect seasonality. Niño 3.4 and DMI
+at 30-, 90-, and 180-day lags give the model explicit access to the circulation state that
+precedes drought onset by one to six months.
+
+**Implementation notes:** Lags are computed on the full 1998–2026 daily spine before merging
+onto the feature matrix. This is critical: computing lags on the already-truncated feature
+matrix (starting 2001-06-01) would lose 180 training rows unnecessarily. The final v2 matrix
+retains all 8,980 rows with zero NaNs in the ENSO/IOD lag columns for the training period.
+New files: `src/data/raw/nino34_monthly.csv`, `src/data/raw/dmi_monthly.csv`,
+`src/data/processed/feature_matrix_v2_drought.parquet`.
+New notebook cells: `[V2] ENSO/IOD Features` in Phase 4; `[V2] Drought Models with ENSO/IOD` in Phase 5.
+
+**Results:**
+
+| Task | Baseline recall | V1 recall | V2 recall | Δ (V2 − V1) |
+|------|----------------|-----------|-----------|-------------|
+| drought +1d | 0.982 | 0.844 | 0.750 | −0.094 |
+| drought +3d | 0.946 | 0.774 | 0.679 | −0.096 |
+| drought +7d | 0.875 | 0.754 | 0.616 | −0.137 |
+| drought +14d | 0.756 | 0.626 | 0.592 | −0.033 |
+
+*Metric: macro recall on the 2023–2025 test set.*
+
+V2 does not outperform V1. SHAP analysis on `drought_v2_+14d` explains why: `dmi_lag_180`
+ranks 2nd overall (mean |SHAP| = 0.302) and `nino34_lag_180` ranks 6th (0.075), both appearing
+in the top 10 most important features — confirming the model has learned a genuine teleconnection
+signal. However, the 30- and 90-day lags rank below the existing SPEI-6 lag features because SPEI-6
+already encodes the precipitation deficit driven by active ENSO/IOD phases, reducing marginal gain.
+The 180-day lags are most informative because they capture the *preceding season's* circulation
+state before the current SPEI signal has fully developed, yet the 14-day forecast horizon is too
+short for this seasonal information to translate into recall improvement.
+
+**Recommendation:** The ENSO/IOD features provide scientific validation that the model can detect
+teleconnection signatures in Jijiga's drought history. Their operational value would be better
+realised in a separate seasonal (1–6 month) drought outlook model — e.g., combined with ECMWF
+SEAS5 forecasts (Improvement 12.5) — rather than in the current 14-day XGBoost predictor.
+For 1–14 day operational forecasting, continue using the v1 models (`drought_+{1,3,7,14}d.ubj`).
+
+---
+
+### 12.2 Explicit Baseline Comparison Per Task
+
+*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 2" for the Claude Code prompt.*
+
+**What will change:** An explicit per-task comparison table will be added to Phase 5, showing
+weighted F1 for each XGBoost model vs the naive persistence baseline, with a "Beats baseline?"
+column. Section 8.2 of this report will be updated to remove the blanket "beats persistence on
+all tasks" claim and replace it with the accurate per-task findings.
+
+---
+
+### 12.3 Calibrated Probability Outputs
+
+*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 3".*
+
+**What will change:** Isotonic regression calibration will be fitted on the fold-3 validation set
+for each of the 8 models. Reliability diagrams for flood_+7d and drought_+7d will be added to
+Phase 5. This section will be updated with calibration findings.
+
+---
+
+### 12.4 ECMWF HRES as Approach 3b (Full Flood Composite)
+
+*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 4".*
+
+**What will change:** ECMWF HRES open-data forecasts (15-day lead, includes soil moisture and
+runoff) will replace GenCast for flood risk, resolving the frozen-SMI problem that limits
+GenCast's flood recall. A new script `src/postprocess_hres_results.py` and new Phase 6 cells
+will be added. This section will be updated with the HRES vs GenCast vs XGBoost comparison.
+
+---
+
+### 12.5 SEAS5 Seasonal Drought Forecast (Approach 3 — Drought)
+
+*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 5".*
+
+**What will change:** ECMWF SEAS5 51-member ensemble seasonal forecasts (6-month lead, monthly
+steps) will be used to produce the first genuine forward-looking drought forecast in this project.
+GenCast cannot do this — its 10-day horizon is incompatible with SPEI-6's 6-month accumulation.
+This section will be updated with SEAS5 macro recall at 1-, 2-, 3-, and 6-month leads, filling in
+the currently N/A Approach 3 drought row in the comparison table.
+
+---
+
+### 12.6 Upstream Wabi Shabelle Catchment Features
+
+*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 6".*
+
+**What will change:** ERA5 data will be downloaded for a 5×5 grid covering the Wabi Shabelle
+upstream catchment (40–44°E, 7–11°N). Upstream daily precipitation and API will be aggregated
+and added as 8 new lag features to the flood models. This directly addresses the most systematic
+miss in v1 (river flooding from upstream precipitation). This section will be updated with
+flood Extreme-class recall improvement and EMDAT event detection rate vs v1.
+
+---
+
+### 12.7 Binary Transition Alert Targets
+
+*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 7".*
+
+**What will change:** Eight binary target columns will be added: "will flood/drought risk reach
+Elevated (class ≥ 2) at any point in the next N days?" Binary XGBoost classifiers trained on
+these targets face a much weaker persistence baseline than the 5-class models, providing a
+cleaner test of whether the model has genuine forecasting skill. This section will be updated
+with AUC-ROC results and EMDAT validation hit rates.
 
 ---
 

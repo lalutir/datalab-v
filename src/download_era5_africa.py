@@ -205,6 +205,8 @@ def aggregate_to_daily(monthly_paths: list, year: int) -> Path:
     monthly_daily = []
     for path in monthly_paths:
         ds = xr.open_dataset(path, engine="netcdf4")
+        if "valid_time" in ds.dims and "time" not in ds.dims:
+            ds = ds.rename({"valid_time": "time"})
         monthly_daily.append(_aggregate_ds(ds))
         ds.close()
 

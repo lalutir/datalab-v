@@ -135,6 +135,13 @@ Append new cells labeled `## [V2] Drought Models with ENSO/IOD`.
 - Save v2 models as `src/data/processed/xgb_models/drought_v2_+{horizon}d.ubj`.
 - Run SHAP TreeExplainer on v2 drought_+14d — plot mean absolute SHAP values, verify ENSO/IOD
   features appear in the top 10.
+
+Step 4 — Update `report/final_report.md`:
+Fill in the results table in Section 12.1 with the actual v2 vs v1 macro recall values at each
+horizon from Step 3. Update the "Key result" entry in the Section 12 summary table at the top.
+Also update Section 9 (Limitations, item 6) to note that ENSO/IOD features were added in v2 and
+cross-reference Section 12.1. Update Section 10 (Future Work, item 5) similarly. Do not change
+any other part of the report.
 ```
 
 ---
@@ -622,6 +629,14 @@ Step 4 — Add to `notebooks/phase5_xgboost.ipynb` (new cells only, labeled
   2023–2025: check whether v2 flood_v2_+7d predicts risk ≥ 2 (Elevated) at any point in the
   30-day window before the event start. Compare hit rate to v1 flood_+7d.
 - Save new models as `src/data/processed/xgb_models/flood_v2_+{horizon}d.ubj`.
+
+Step 5 — Update `report/final_report.md`:
+Fill in Section 12.6 "Upstream Wabi Shabelle Catchment Features" with: the upstream catchment
+domain used (40–44°E, 7–11°N), the 8 new lag features added, the v2 vs v1 flood Extreme-class
+recall from Step 4, and the EMDAT event detection hit rate comparison. Update the "Key result"
+entry in the Section 12 summary table. Also update Section 9 (Limitations, item 1) to note that
+the single-grid-point limitation is partially addressed in v2, and update Section 2 (Data) to
+document the upstream ERA5 data source. Do not change any other part of the report.
 ```
 
 ---
