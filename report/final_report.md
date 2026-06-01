@@ -295,7 +295,7 @@ A second combination strategy — using GenCast's forecasted precipitation direc
 
 **Approach 1 (thresholding):** Physical thresholds produce risk labels that are temporally consistent and physically interpretable, but they are not forecasts — they classify current conditions, not future risk. Their "forecast" performance is equivalent to naive persistence.
 
-**Approach 2 (XGBoost):** XGBoost consistently beats naive persistence across all eight tasks. Short-horizon models (+1d, +3d) show the strongest skill, with weighted F1 substantially above the persistence baseline. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
+**Approach 2 (XGBoost):** Explicit per-task evaluation (see `## [V2] Baseline Comparison` cells in Phase 5; results tabulated in Section 12.2) shows that XGBoost does **not** beat naive persistence consistently. On weighted F1, only flood_+14d marginally exceeds the persistence baseline (0.6264 vs 0.6257, a margin of 0.0007); no task beats persistence on macro recall. Drought models are the most affected: because SPEI-6 is computed monthly and forward-filled to daily resolution, the drought risk label changes only ~12 times per year, making naive persistence nearly perfect (macro recall 0.98 at +1d, declining to 0.76 at +14d). XGBoost falls below these benchmarks at every drought horizon (0.84 at +1d, 0.63 at +14d). Flood models also trail persistence at every horizon — XGBoost weighted F1 ranges from 0.84 (+1d) to 0.63 (+14d) against baseline values of 0.90 and 0.63 — though the gap narrows at longer horizons where persistence degrades faster than XGBoost. Skill degrades with horizon as expected, and the Extreme class shows the lowest per-class recall due to its rarity; sample weights mitigate but do not eliminate this. These results motivate two v2 improvements: ENSO/IOD teleconnection features for drought forecasting (Improvement 12.1), which add large-scale climate signals not captured by SPEI within a 14-day horizon, and binary transition alert targets (Improvement 12.7), which reformulate the task as detecting imminent risk-level increases and face a substantially weaker persistence baseline.
 
 **Approach 3 (foundation model + hybrid ensemble):** GenCast alone underperforms both ERA5 thresholding and XGBoost on the 8 case init dates (flood macro recall 0.13 at +7d), due to frozen soil moisture and missing runoff in the flood composite. However, because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting is not possible via GenCast due to the 6-month accumulation requirement of SPEI.
 
@@ -362,7 +362,7 @@ modifying existing v1 cells. The full improvement plan and rationale are in
 | # | Improvement | Status | Key result |
 |---|-------------|--------|------------|
 | 12.1 | ENSO/IOD features — drought XGBoost | **Done** | SHAP confirms teleconnection signal; no recall gain at 1–14 day horizon |
-| 12.2 | Explicit baseline comparison per task | Planned | — |
+| 12.2 | Explicit baseline comparison per task | **Done** | Only flood_+14d beats persistence (wF1 margin 0.0007); no task beats on macro recall |
 | 12.3 | Calibrated probability outputs | Planned | — |
 | 12.4 | ECMWF HRES flood forecast (full composite) | Planned | — |
 | 12.5 | SEAS5 seasonal drought forecast | Planned | — |
@@ -426,12 +426,31 @@ For 1–14 day operational forecasting, continue using the v1 models (`drought_+
 
 ### 12.2 Explicit Baseline Comparison Per Task
 
-*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 2" for the Claude Code prompt.*
+New cells labelled `## [V2] Baseline Comparison -- Explicit Per-Task Results` were added to
+Phase 5 (`phase5_xgboost.ipynb`, cell IDs `v2-baseline-header` and `v2-baseline-code`). Each
+of the 8 saved XGBoost models is loaded and evaluated against naive persistence on the
+2023-2025 test set using weighted F1 (`average='weighted'`, `zero_division=0`) and macro recall.
 
-**What will change:** An explicit per-task comparison table will be added to Phase 5, showing
-weighted F1 for each XGBoost model vs the naive persistence baseline, with a "Beats baseline?"
-column. Section 8.2 of this report will be updated to remove the blanket "beats persistence on
-all tasks" claim and replace it with the accurate per-task findings.
+**Results (2023-2025 test set):**
+
+| Task | XGB wF1 | Pers wF1 | XGB macR | Pers macR | Beats persistence? |
+|------|---------|----------|----------|-----------|-------------------|
+| drought_+1d | 0.9449 | 0.9909 | 0.8441 | 0.9821 | NO |
+| drought_+3d | 0.9140 | 0.9725 | 0.7742 | 0.9463 | NO |
+| drought_+7d | 0.8838 | 0.9356 | 0.7535 | 0.8747 | NO |
+| drought_+14d | 0.8082 | 0.8718 | 0.6256 | 0.7561 | NO |
+| flood_+1d | 0.8371 | 0.9005 | 0.7098 | 0.8112 | NO |
+| flood_+3d | 0.7347 | 0.7786 | 0.5422 | 0.5824 | NO |
+| flood_+7d | 0.6563 | 0.6961 | 0.4213 | 0.4769 | NO |
+| flood_+14d | **0.6264** | 0.6257 | 0.3880 | 0.3860 | **YES (wF1 only, margin 0.0007)** |
+
+**Interpretation:** Drought persistence is near-perfect because SPEI-6 changes only ~12 times
+per year (monthly computation, forward-filled to daily), so naive persistence trivially assigns
+the correct label on most days. Weighted F1 is inflated for both approaches by the dominant
+Low class (~60-65% of test days). Flood_+14d is the only task where XGBoost marginally exceeds
+persistence, and only on weighted F1 (by 0.0007). No task beats persistence on macro recall.
+Section 8.2 has been updated to reflect these findings. The results motivate Improvements 12.1
+(ENSO/IOD features) and 12.7 (binary transition alert targets).
 
 ---
 
