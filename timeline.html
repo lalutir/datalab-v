@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Timeline — Jijiga Flood & Drought Risk</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f2; color: #1a1a18; display: flex; min-height: 100vh; }
+#main { flex: 1; padding: 28px 24px; overflow-y: auto; min-width: 0; }
+h1 { font-size: 16px; font-weight: 600; margin-bottom: 3px; }
+.subtitle { font-size: 12px; color: #888; margin-bottom: 4px; }
+.changes { font-size: 11px; color: #aaa; margin-bottom: 16px; font-style: italic; }
+.done-banner { background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 10px 14px; margin-bottom: 20px; font-size: 12px; color: #2e7d32; }
+.done-banner strong { font-weight: 600; }
+
+.legend { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 22px; }
+.leg-btn { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #555; cursor: pointer; padding: 5px 11px; border-radius: 99px; border: 1px solid #ddd; background: #fff; transition: all 0.15s; }
+.leg-btn:hover { border-color: #aaa; background: #fafaf8; }
+.leg-btn.active { border-color: #555; background: #eeecea; font-weight: 600; color: #111; }
+.leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+.phase-block { margin-bottom: 26px; }
+.phase-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #999; margin-bottom: 9px; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.phase-label:hover .plt { color: #333; text-decoration: underline; }
+.phase-label::after { content: ''; flex: 1; height: 1px; background: #e5e5e1; }
+.plt { white-space: nowrap; transition: color 0.15s; }
+
+.week-row { display: grid; grid-template-columns: 52px 1fr; gap: 8px; margin-bottom: 5px; align-items: start; }
+.week-num { font-size: 11px; font-weight: 500; color: #c0bfba; padding-top: 9px; text-align: right; white-space: nowrap; }
+.week-tasks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+
+.task { border-radius: 8px; padding: 8px 10px; border: 1px solid transparent; transition: opacity 0.2s, transform 0.1s, box-shadow 0.1s; min-height: 62px; cursor: pointer; }
+.task:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.09); }
+.task.hidden-task { visibility: hidden; cursor: default; pointer-events: none; }
+.task.dimmed { opacity: 0.1; }
+.task.selected { outline: 2px solid #444; outline-offset: 1px; }
+.task .who { font-size: 10px; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.03em; }
+.task .what { font-size: 11.5px; line-height: 1.45; }
+.task .tag { display: inline-block; font-size: 10px; margin-top: 5px; padding: 1px 6px; border-radius: 99px; background: rgba(0,0,0,0.07); color: #555; }
+
+.p1  { background: #E6F1FB; border-color: #9ec8f0; } .p1  .who { color: #0c447c; }
+.p2  { background: #E1F5EE; border-color: #6dcfad; } .p2  .who { color: #085041; }
+.p3  { background: #EEEDFE; border-color: #c4bff4; } .p3  .who { color: #3C3489; }
+.p4  { background: #FAECE7; border-color: #f0b49a; } .p4  .who { color: #712B13; }
+.rev { background: #FAEEDA; border-color: #f0c87a; } .rev .who { color: #633806; }
+
+#panel { width: 370px; min-width: 370px; background: #fff; border-left: 1px solid #e5e5e1; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: none; }
+#panel.open { display: block; }
+.panel-inner { padding: 24px 20px; position: relative; }
+.panel-close { position: absolute; top: 16px; right: 16px; width: 28px; height: 28px; border: 1px solid #ddd; background: #fafaf8; border-radius: 6px; cursor: pointer; font-size: 14px; color: #888; display: flex; align-items: center; justify-content: center; }
+.panel-close:hover { background: #eeecea; color: #333; }
+.panel-type { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 6px; }
+.type-p1{color:#0c447c}.type-p2{color:#085041}.type-p3{color:#3C3489}.type-p4{color:#712B13}.type-rev{color:#633806}.type-phase{color:#777}
+.panel-title { font-size: 14px; font-weight: 600; color: #111; line-height: 1.5; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #eeede9; padding-right: 32px; }
+.ps { margin-bottom: 16px; }
+.ps-label { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #aaa; margin-bottom: 5px; }
+.ps-body { font-size: 13px; color: #333; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div id="main">
+  <h1>Project timeline — Jijiga flood &amp; drought risk prediction</h1>
+  <p class="subtitle">Single grid point (42.75°E, 9.25°N) · daily resolution · 3-way comparison · 4 people. Click any phase or task for details.</p>
+  <p class="changes">Revised: daily resolution (aggregated from 6-hourly ERA5) · multiclass XGBoost classifier (+1/+3/+7/+14 days) · API + SMI + composite flood score · 3-way comparison (thresholding → XGBoost → foundation model) · Jijiga single grid point · 2000–2025 data range · EMDAT spot-check only · no dashboard</p>
+
+  <div class="done-banner">
+    <strong>✓ Phase 1 (setup &amp; scoping) — complete.</strong> &nbsp;
+    <strong>✓ Phase 2 (data pipeline) — complete.</strong> &nbsp;
+    <strong>✓ Phase 3 (index computation &amp; EDA) — complete.</strong> &nbsp;
+    <strong>✓ Phase 4 (feature engineering) — complete.</strong> &nbsp;
+    <strong>✓ Phase 5 (XGBoost training &amp; evaluation) — complete.</strong> &nbsp;
+    <strong>✓ Phase 6 (GenCast foundation model) — complete.</strong> &nbsp;
+    GenCast 1° ran on RunPod A100 SXM4 80 GB (Azure GPU quota denied). 8 init dates, 8-member ensemble, 10-day forecasts. Three-way comparison table complete. Continuing to Phase 7.
+  </div>
+
+  <div class="legend">
+    <button class="leg-btn active" onclick="filter('all',this)"><span class="leg-dot" style="background:#888"></span>show all</button>
+    <button class="leg-btn" onclick="filter('p1',this)"><span class="leg-dot" style="background:#378ADD"></span>person 1</button>
+    <button class="leg-btn" onclick="filter('p2',this)"><span class="leg-dot" style="background:#1D9E75"></span>person 2</button>
+    <button class="leg-btn" onclick="filter('p3',this)"><span class="leg-dot" style="background:#7F77DD"></span>person 3</button>
+    <button class="leg-btn" onclick="filter('p4',this)"><span class="leg-dot" style="background:#D85A30"></span>person 4</button>
+    <button class="leg-btn" onclick="filter('rev',this)"><span class="leg-dot" style="background:#BA7517"></span>reviews</button>
+  </div>
+  <div id="tl"></div>
+</div>
+
+<div id="panel">
+  <div class="panel-inner">
+    <button class="panel-close" onclick="closePanel()">&#x2715;</button>
+    <div class="panel-type" id="pd-type"></div>
+    <div class="panel-title" id="pd-title"></div>
+    <div class="ps" id="wrap-what"><div class="ps-label">What</div><div class="ps-body" id="pd-what"></div></div>
+    <div class="ps" id="wrap-why"><div class="ps-label">Why</div><div class="ps-body" id="pd-why"></div></div>
+    <div class="ps" id="wrap-how"><div class="ps-label">How</div><div class="ps-body" id="pd-how"></div></div>
+  </div>
+</div>
+
+<script>
+var PHASES = [
+  {
+    id:"ph3", phase:"Phase 3 — daily aggregation & index computation (wk 9–11)",
+    what:"Aggregate the 6-hourly ERA5 data to daily resolution, compute all required indices (SPEI, API, SMI, total_ro) at the Jijiga grid point, perform thorough EDA, and validate the index behaviour against known drought and flood years.",
+    why:"Everything downstream — target construction, XGBoost features, foundation model comparison — depends on having correctly computed daily indices. This phase is the scientific foundation of the entire project. A mistake here propagates into every model.",
+    how:"All work runs locally. Load ERA5 NetCDF from Blob Storage. Extract the single grid point at 42.75°E, 9.25°N. Aggregate to daily. Compute indices. Validate visually and statistically. By end of week 11 you should have one clean daily Parquet file on Blob containing all raw variables and all computed indices covering 2000–2025.",
+    weeks:[
+      { n:"wk 9", tasks:[
+        { p:"p1", who:"P1", short:"Aggregate 6-hourly ERA5 to daily. Validate row count and date continuity.",
+          what:"Aggregate the raw 6-hourly ERA5 NetCDF data to daily resolution for the Jijiga grid point.",
+          why:"Your raw data has 4 observations per day. All index computation, feature engineering, and model training runs at daily resolution. This aggregation step is the first transformation applied to the raw data and must be done correctly — wrong aggregation rules (e.g. summing temperature instead of averaging) will corrupt every downstream calculation.",
+          how:"Load ERA5 NetCDF from Blob using xarray. Extract the single nearest grid point to 42.75°E, 9.25°N using xarray sel with method='nearest'. Apply aggregation rules per variable: total precipitation (tp) — sum the four 6-hourly values; 2m temperature (t2m) — take the daily mean; evaporation (e) and potential evaporation (pev) — sum; volumetric soil water layer 1 (swvl1) and layer 2 (swvl2) — mean; surface runoff (sro) and large-scale precipitation (lsp) — sum. The result is one row per day. Verify: exactly 9131 rows for 2000-01-01 to 2024-12-31, DatetimeIndex sorted ascending, no duplicate dates, no missing dates. Save as a daily Parquet file and upload to processed-data Blob." },
+        { p:"p2", who:"P2", short:"Compute SPEI-6 and SPEI-12 from daily aggregated data. Plot vs known drought years.",
+          what:"Compute the Standardized Precipitation Evapotranspiration Index at 6 and 12-month accumulation periods from the daily aggregated ERA5 data.",
+          why:"SPEI is the primary drought index in the pipeline. It captures drought driven by both rainfall deficit and high temperatures, which is critical for the Horn of Africa where temperature-driven evapotranspiration plays a major role in drought onset. SPEI-6 captures medium-term drought, SPEI-12 captures multi-season drought.",
+          how:"Aggregate daily precipitation and PET to monthly totals first (SPEI is defined on monthly accumulations). Compute the climatic water balance: CWB = monthly_precipitation - monthly_PET. Fit the log-logistic distribution to CWB values from 2000–2020 (training reference period) for each calendar month separately. Standardise to get SPEI. Then disaggregate back to daily by forward-filling each monthly SPEI value across all days of that month. Plot SPEI-6 and SPEI-12 over 2000–2025 on the same axes. Annotate the known major Horn of Africa drought years: 2002, 2006, 2011, 2016–17, 2022–23. Verify SPEI clearly drops below -1.0 during these periods. If it does not, the index calculation has a problem that must be fixed before continuing." },
+        { p:"p3", who:"P3", short:"Compute API (Antecedent Precipitation Index) using exponential decay formula.",
+          what:"Compute the Antecedent Precipitation Index from daily total precipitation using an exponential decay function.",
+          why:"API captures soil saturation state by weighting recent rainfall more heavily than older rainfall. Unlike a simple rolling sum, the exponential decay is physically motivated — soil moisture dissipates roughly exponentially over time through drainage and evaporation. This makes API a much better predictor of flood risk than a moving average of precipitation because it accumulates the memory of past wet conditions.",
+          how:"API is computed recursively: API(t) = k × API(t-1) + P(t), where P(t) is daily precipitation and k is a decay constant. Use k=0.92 which corresponds to a characteristic memory of roughly 12 days (appropriate for semi-arid soils like those near Jijiga). Initialise API(0) = 0 on 2000-01-01 and run forward through the full record. The result is a daily time series that spikes after rain events and decays exponentially between them. Plot API alongside daily precipitation to visually verify the decay behaviour. Check that API spikes are largest after multi-day rainfall sequences and smallest during the long dry season." },
+        { p:"p4", who:"P4", short:"Compute SMI (Soil Moisture Index) and total_ro. Plot and verify seasonal patterns.",
+          what:"Compute the Soil Moisture Index from ERA5 soil moisture layers and compute total runoff.",
+          why:"SMI directly measures root-zone soil moisture normalised to a 0–1 scale. It is independent of precipitation history (unlike API) and provides a complementary signal — API tells you how much rain has fallen recently, SMI tells you what is actually in the soil right now. Both are needed for the composite flood score. Total runoff combines surface and subsurface runoff and is a direct physical precursor to river flooding.",
+          how:"Compute SMI = (swvl1 + swvl2) / (swvl1_max + swvl2_max), where the max values are the field capacity for each layer taken from the ERA5 land parameter table (swvl1 field capacity ≈ 0.323 m³/m³, swvl2 ≈ 0.323 m³/m³ for loamy sand typical of the Somali region). Clamp to [0,1]. Compute total_ro = sro + lsp (surface runoff plus large-scale precipitation acts as a proxy for subsurface contribution). Plot SMI and total_ro seasonal cycles — SMI should be lowest in June–September (long dry season) and highest in April–May and October–November (rainy seasons). Verify this matches the known bimodal rainfall pattern of the Horn of Africa." },
+      ]},
+      { n:"wk 10", tasks:[
+        { p:"rev", who:"Review", short:"P1 reviews P3 API computation. P2 reviews P4 SMI. All four validate index seasonal patterns.", tag:"peer review",
+          what:"P1 reviews P3's API computation for correctness. P2 reviews P4's SMI and total_ro. All four team members independently check whether the seasonal patterns in all four indices match the known Horn of Africa climate.",
+          why:"The indices are the foundation of every downstream step. An error in the decay constant, the normalisation formula, or the aggregation approach will corrupt the target variables, the features, and the model. Finding it here is the cheapest possible time to find it.",
+          how:"P1: Recompute API independently for a single year using the same formula and compare to P3's output day by day. P2: Check SMI against published ERA5 soil moisture climatology for the Horn of Africa — does the 2011 extreme drought (worst in 60 years) show SMI near zero? P3 and P4: For each of the four indices plot the mean value by calendar month over 2000–2020. Flood indices (API, SMI, total_ro) should peak in April–May and October–November. SPEI should be most negative in June–September and January–February. Document any index that fails this check and fix it before week 11." },
+        { p:"p1", who:"P1", short:"Full EDA: time series overview, all 4 indices over 25 years with EMDAT annotations.",
+          what:"Full exploratory data analysis: plot all four indices over the full 2000–2025 period in a single 4-panel figure with major known events annotated.",
+          why:"Visual inspection of 25 years of daily data is the most reliable way to catch problems that pass numerical checks. A drift in SPEI after 2015, an API that stops decaying correctly, or an SMI that is permanently at zero all become immediately obvious in a well-constructed time series plot.",
+          how:"Create a 4-row subplot figure (one per index: SPEI-6, API, SMI, total_ro). Plot daily values as light grey lines with a 30-day rolling mean overlaid in colour. Add vertical shaded bands for known major drought events: 2002, 2006, 2011, 2016–17, 2022–23. Add vertical lines for major EMDAT flood events from the cleaned EMDAT record. The drought bands should clearly correspond to SPEI dropping below -1.0 and SMI approaching zero. The flood event lines should correspond to API and total_ro spikes. Save at 300 DPI for the report." },
+        { p:"p2", who:"P2", short:"Distribution analysis: histograms and boxplots for all 4 indices and key raw variables.",
+          what:"Distribution analysis for all four indices and the key raw weather variables (tp, t2m, e).",
+          why:"Understanding the distribution of each index is essential for threshold calibration in Phase 4. SPEI should be roughly normal centred at zero. API and total_ro should be heavily right-skewed. SMI should be bounded 0–1 and right-skewed toward drier conditions for this semi-arid location. Any distribution that looks wrong (e.g. SPEI that is always negative) indicates a computational error.",
+          how:"For each index produce a histogram with a KDE overlay and a boxplot. For SPEI: check the distribution is centred near zero with range approximately -4 to +2. For API: expect 80%+ of values near zero with a long right tail. For SMI: expect most values in the 0.0–0.4 range given the semi-arid climate. For total_ro: expect near-zero for most days with occasional extreme spikes. Run the Augmented Dickey-Fuller stationarity test on each index and report p-value. If any index is non-stationary (p > 0.05), add its first difference as an additional feature in Phase 5." },
+        { p:"p3", who:"P3", short:"Correlation matrix and ACF/PACF for all 4 indices up to 30 lags.",
+          what:"Pearson correlation heatmap between all four indices and key raw variables, plus ACF and PACF plots up to 30 lags for each index.",
+          why:"The correlation matrix validates that the indices are measuring what they should — API should correlate strongly with tp, SMI should correlate with swvl1, SPEI should correlate with the precipitation-PET balance. The ACF and PACF plots justify the lag choices in Phase 5 — if lag-1 autocorrelation is not the strongest, the feature engineering approach needs rethinking.",
+          how:"Compute Pearson correlation matrix between SPEI, API, SMI, total_ro, tp, t2m, e, pev. Plot as a heatmap. Check: API vs tp correlation should be high (>0.6). SMI vs swvl1+swvl2 should be very high (>0.9). SPEI vs API should be moderate (0.4–0.7). SPEI and SMI should NOT be near-perfectly correlated — if they are, one is redundant. For ACF/PACF: expect strong lag-1 autocorrelation for all indices, gradual decay over 7–14 lags for SPEI and SMI (slow-moving), faster decay for API and total_ro (event-driven). The seasonal lag (~365 days) should show a secondary ACF peak for SPEI and SMI." },
+        { p:"p4", who:"P4", short:"Seasonal decomposition of all 4 indices. Verify bimodal Horn of Africa pattern.",
+          what:"Seasonal decomposition of each index into trend, seasonal, and residual components.",
+          why:"The seasonal component of each index validates that it correctly captures the bimodal rainy season of the Horn of Africa (April–May and October–November). If the seasonal component is flat, the index has no seasonal signal and the lag_365 feature will add no value. The trend component reveals long-term drying or wetting trends over the 25-year record which are scientifically interesting and worth reporting.",
+          how:"Use statsmodels seasonal_decompose with model='additive' and period=365 for each index. Plot the four components (observed, trend, seasonal, residual) for each index. The seasonal component should show two clear peaks per year. If using a multiplicative model, note that API and total_ro require this since they are non-negative and right-skewed. Report whether any index shows a significant trend over 2000–2025. A negative trend in SPEI or SMI would indicate long-term drying consistent with climate change projections for the Horn of Africa." },
+      ]},
+      { n:"wk 11", tasks:[
+        { p:"p1", who:"P1", short:"Construct drought risk labels using SPEI thresholds + API/SMI modifier rule.",
+          what:"Construct the daily drought risk classification labels using SPEI as the primary classifier with API and SMI as secondary modifiers.",
+          why:"The risk labels are the targets that XGBoost learns to predict. They must be constructed on training data statistics only and then applied to the full dataset. The modifier rule captures drought conditions that SPEI underestimates — a period where SPEI is at -0.8 but both API and SMI are at their lowest 25th percentile is physically more drought-stressed than SPEI alone suggests.",
+          how:"First compute API and SMI 25th percentile cutoffs from 2000–2022 training rows only. Apply McKee (1993) SPEI thresholds to every day: SPEI >= -0.5 = Low (0), -1.0 to -0.5 = Moderate (1), -1.5 to -1.0 = Elevated (2), -2.0 to -1.5 = High (3), < -2.0 = Extreme (4). Apply the modifier: if base risk is Moderate, Elevated, or High AND (API < training 25th percentile OR SMI < training 25th percentile) then elevate one level. Do NOT apply the modifier to Low or Extreme. Do NOT include total_ro in the drought classifier — near-zero runoff at this arid location will trigger spurious modifications. Verify the class distribution: Low ~60–65%, Moderate ~15–20%, Elevated ~8–12%, High ~4–6%, Extreme ~2–5%. If Extreme exceeds 10%, tighten the SPEI threshold. Save as drought_risk column." },
+        { p:"p2", who:"P2", short:"Construct flood risk labels using composite score: 0.40×API + 0.35×SMI + 0.25×total_ro.",
+          what:"Construct the daily flood risk classification labels using a weighted composite score of API, SMI, and total_ro.",
+          why:"A composite score is better than a single-variable exceedance threshold because flooding requires the simultaneous presence of multiple conditions: recent rainfall (API), saturated soil (SMI), and actual runoff (total_ro). A day with extreme precipitation on dry soil may not flood; a day with moderate precipitation on already-saturated soil might. The composite captures this interaction.",
+          how:"Fit min/max normalisation parameters for API, SMI, and total_ro from 2000–2022 training rows only. Apply to the full dataset: norm_API = (API - train_min) / (train_max - train_min), clamped to [0,1]. Same for SMI and total_ro. Compute flood_score = 0.40×norm_API + 0.35×norm_SMI + 0.25×norm_total_ro. Compute percentile thresholds from training flood_score values: <65th = Low (0), 65th–80th = Moderate (1), 80th–90th = Elevated (2), 90th–97th = High (3), >97th = Extreme (4). Do NOT include SPEI in the flood composite — SPEI can be negative during flash flood events (dry conditions preceding the flood) which would actively suppress the flood score. Verify class distribution matches expected proportions. Save as flood_risk column." },
+        { p:"p3", who:"P3", short:"Create shifted target columns for all 8 forecast tasks (+1/+3/+7/+14 days × 2 hazards).",
+          what:"Create forward-shifted versions of the drought and flood risk labels for all four forecast horizons.",
+          why:"The XGBoost model predicts future risk. Shifting the target column by n days means each row contains today's feature values and the risk level that will occur n days from now. Without this shift the model would be predicting current risk from current features — a trivial task that adds no forecasting value.",
+          how:"For each horizon n in [1, 3, 7, 14]: create drought_risk_t_plus_n = drought_risk.shift(-n) and flood_risk_t_plus_n = flood_risk.shift(-n). The negative shift moves future values into current rows. This creates NaN values at the end of the series (the last n rows have no future to predict). These rows will be dropped during training. Verify: row on date 2010-06-15 should have drought_risk_t_plus_7 equal to the drought_risk value on 2010-06-22. Check three random dates manually. Save all 8 target columns alongside the index columns in the combined Parquet file on Blob." },
+        { p:"p4", who:"P4", short:"Class distribution check, threshold sensitivity, EMDAT spot validation.",
+          what:"Verify class distributions for all 8 target columns, run threshold sensitivity analysis, and spot-check against EMDAT events.",
+          why:"If class distributions are badly skewed the XGBoost models will be trained on misleading data. The threshold sensitivity check shows whether small changes in the cutoffs dramatically change the labels. The EMDAT spot check is the sanity check — every documented major disaster must show at least Moderate risk during its window.",
+          how:"Plot bar charts of class distribution for all 8 target columns. Expected: Low ~60–65%, Moderate ~15–20%, Elevated ~8–12%, High ~4–6%, Extreme ~2–5%. Shift SPEI thresholds ±0.1 and flood percentile thresholds ±3 percentage points and recheck — if Extreme count changes by more than a factor of 2, document as a sensitivity limitation. For EMDAT: load cleaned EMDAT CSV, filter to Jijiga/Somali region, flood and drought types, 2000–2025. For each event extract the risk labels in the window from 30 days before event start to 30 days after event end. Every major documented disaster must reach at least Moderate. Most should reach Elevated or above. Document results in a table." },
+      ]},
+    ]
+  },
+  {
+    id:"ph4", phase:"Phase 4 — feature engineering & naive baseline (wk 12)",
+    what:"Build the full lag feature matrix that XGBoost will train on, define the naive persistence baseline, and establish the train/validation/test split.",
+    why:"Feature engineering at daily resolution with 365-day lags is significantly more complex than the monthly approach. Getting it right — especially avoiding data leakage — is the difference between a valid model and one that produces falsely optimistic results.",
+    how:"All work runs locally. The output of this phase is a single feature matrix Parquet file on Blob, ready for XGBoost training. The naive baseline is computed here so it can be directly compared to XGBoost in Phase 5.",
+    weeks:[
+      { n:"wk 12", tasks:[
+        { p:"p1", who:"P1", short:"Build lag feature matrix: lags 1,3,7,14,365 for all 4 indices and 4 raw variables.",
+          what:"Create the full lag feature matrix with 40 features per row: lag copies at 1, 3, 7, 14, and 365 days for each of the four indices (SPEI, API, SMI, total_ro) and four raw weather variables (tp, t2m, e, pev).",
+          why:"Lag features give the model temporal context — what was the state 1 day ago, 3 days ago, a week ago, and a year ago. The lag_365 features are particularly important: they encode seasonal awareness without needing explicit calendar inputs. The model learns that at this point last year the indices were at these values, which captures the annual dry/wet cycle implicitly. Raw weather variable lags capture the immediate atmospheric forcing, while index lags capture the cumulative state.",
+          how:"Load the combined daily Parquet from Blob. For each of the 8 variables (SPEI, API, SMI, total_ro, tp, t2m, e, pev) and each lag n in [1, 3, 7, 14, 365] create a new column named variable_lag_n using df[variable].shift(n). This creates NaN values in the first 365 rows. After all lags are created, drop the first 365 rows — they have NaN values for lag_365 and cannot be used. Verify: the column SPEI_lag_7 on date 2001-04-15 should equal the SPEI value on 2001-04-08. Check five random dates manually before proceeding. The final feature matrix should have approximately 9131 - 365 = 8766 rows and exactly 40 feature columns plus the 8 target columns plus the date index." },
+        { p:"p2", who:"P2", short:"Define train/val/test split and compute naive persistence baseline.",
+          what:"Define the temporal train/validation/test split and compute the naive persistence baseline for all 8 forecast tasks.",
+          why:"A temporal split is mandatory — random shuffling would allow future information to leak into training. The naive baseline (predict tomorrow's risk = today's risk) is the minimum bar XGBoost must beat to demonstrate it adds value. If XGBoost cannot beat naive persistence, the model is useless. Computing it now gives a concrete target.",
+          how:"Apply a strict temporal split: train = 2000-01-01 to 2022-12-31 (after lag dropping), validation is handled via walk-forward cross-validation within training (see Phase 5), test = 2023-01-01 to 2025-12-31. Never shuffle. Never use any data from after 2022 during training or hyperparameter tuning. For the naive persistence baseline: for each of the 8 tasks, predict that the risk level at time t+n equals the risk level at time t (i.e. the current drought_risk or flood_risk column). Compute weighted F1-score for this persistence prediction on the test set. Record all 8 baseline F1 scores — these are the minimum thresholds XGBoost must exceed." },
+        { p:"p3", who:"P3", short:"Review feature matrix for data leakage. Verify lag directions and target shifts.",
+          what:"Independent review of the feature matrix and target column construction for data leakage.",
+          why:"Data leakage is the most common and most damaging error in time series ML. It makes the model appear far better than it is and invalidates all results. At daily resolution with 8 target columns and 40 lag features there are many ways leakage can creep in — wrong shift direction, off-by-one errors in lag indices, target columns included as features.",
+          how:"Check the following explicitly for five random dates: confirm SPEI_lag_1 on date D equals SPEI on date D-1 (not D+1). Confirm drought_risk_t_plus_7 on date D equals drought_risk on date D+7 (future, not past). Confirm no target columns (drought_risk_t_plus_n or flood_risk_t_plus_n) appear in the feature column list. Confirm the original non-lagged drought_risk and flood_risk columns are NOT in the feature matrix (they would be leakage for t+1 prediction since they encode current-day risk). Confirm no row from the test period appears in the training rows. Document each check explicitly." },
+        { p:"p4", who:"P4", short:"Write data preparation summary: indices, features, class distributions, baseline F1 scores.",
+          what:"Write a concise data preparation summary document covering all decisions made in Phases 3 and 4.",
+          why:"Before model training begins every team member needs a shared understanding of exactly what is in the feature matrix and what the model is trying to predict. Discrepancies in understanding lead to incorrect interpretation of results later. This document also forms the core of the data and methodology sections of the final report.",
+          how:"Document: the daily aggregation rules for each variable, the exact API formula with k=0.92 and initialisation, the SMI normalisation formula with field capacity values used, the flood composite score weights and the justification for excluding SPEI, the SPEI thresholds and modifier rule, the percentile cutoffs for flood risk (computed from training data — state the exact values), the 8 forecast tasks, the lag feature list, the train/test split dates, and the naive baseline F1 scores for all 8 tasks. Keep to 2–3 pages. Share with all four team members before Phase 5 starts." },
+      ]},
+    ]
+  },
+  {
+    id:"ph5", phase:"Phase 5 — XGBoost training & evaluation (wk 13–14)",
+    what:"Train 8 XGBoost multiclass classifiers (2 hazards × 4 forecast horizons), validate using walk-forward cross-validation, tune hyperparameters, evaluate on the test set, and run SHAP feature importance analysis.",
+    why:"XGBoost is Approach 2 in the three-way comparison. It must beat the naive persistence baseline to justify its inclusion. The SHAP analysis is the scientific highlight — it tells you which physical variables drive flood and drought risk at Jijiga specifically, which is a genuine scientific contribution regardless of how the foundation model performs.",
+    how:"Train 8 separate models. Do not try to build a multi-output model — train each independently as the optimal features and hyperparameters differ across hazards and horizons. All training runs locally on CPU.",
+    weeks:[
+      { n:"wk 13", tasks:[
+        { p:"p1", who:"P1", short:"Train XGBoost for drought: 4 classifiers (+1/+3/+7/+14). Walk-forward CV.",
+          what:"Train four XGBoost multiclass classifiers for drought risk prediction at +1, +3, +7, and +14 day horizons using walk-forward cross-validation.",
+          why:"Training 4 separate drought models rather than one multi-output model is correct because the optimal feature importances change with horizon. At +1 day, recent index values dominate. At +14 days, seasonal lags become more important. Separate models allow each to learn the right feature weighting for its horizon. Walk-forward CV gives a more honest performance estimate than a single split.",
+          how:"For each horizon n in [1, 3, 7, 14]: load the feature matrix and select the drought_risk_t_plus_n target column. Drop rows where target is NaN. Use XGBClassifier with objective='multi:softmax', num_class=5, n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8. Handle class imbalance by computing sample weights: weight for each row = total_samples / (5 × count_of_that_class). Run 3 walk-forward CV folds: fold 1 train 2001–2014 validate 2015–2016, fold 2 train 2001–2016 validate 2017–2018, fold 3 train 2001–2018 validate 2019–2020. Record weighted F1-score for each fold. Report mean and std across folds. High std indicates temporal instability — document this." },
+        { p:"p2", who:"P2", short:"Train XGBoost for flood: 4 classifiers (+1/+3/+7/+14). Walk-forward CV.",
+          what:"Train four XGBoost multiclass classifiers for flood risk prediction at +1, +3, +7, and +14 day horizons using walk-forward cross-validation.",
+          why:"Flood and drought models are trained separately because the driving features are completely different. Flood is driven by short-term precipitation accumulation and soil saturation (API, SMI at short lags). Drought is driven by slow-moving moisture deficits (SPEI, SMI at long lags). A joint model would mix these signals.",
+          how:"Same approach as P1 but using the flood_risk_t_plus_n target columns. Expect a different feature importance structure: API_lag_1 and tp_lag_1 should rank high for flood at short horizons. At the +14 day horizon, expect feature importance to spread more evenly across lags as the immediate signal is weaker. Record all walk-forward F1 scores. Compare to the naive persistence baseline from Phase 4 — the +1 day flood model should clearly beat persistence. If it does not, investigate whether the flood composite score is calibrated correctly." },
+        { p:"p3", who:"P3", short:"Hyperparameter tuning for all 8 models using validation fold F1 scores.",
+          what:"Hyperparameter tuning for all 8 XGBoost models using the walk-forward validation fold results.",
+          why:"Default hyperparameters are a starting point, not an endpoint. Tuning max_depth controls overfitting — too deep and the model memorises training noise, too shallow and it underfits. Learning rate and n_estimators interact — lower learning rate needs more estimators. Tuning on the validation folds (not the test set) ensures the tuning does not leak test information.",
+          how:"For each of the 8 models test the following grid: max_depth in [4, 6, 8], learning_rate in [0.01, 0.05, 0.1], n_estimators in [200, 300, 500]. For each combination compute the average weighted F1 across the 3 walk-forward folds. Select the combination with the highest average F1. Refit the final model on the complete training period (2001–2022) using the selected hyperparameters. Document the chosen hyperparameters for each of the 8 models in a table — you will likely find that longer horizons prefer lower learning rates and more estimators." },
+        { p:"p4", who:"P4", short:"Evaluate all 8 models on test set 2023–2025. Produce metrics and confusion matrices.",
+          what:"Evaluate all 8 final XGBoost models on the held-out test set (2023–2025) and produce the full evaluation metrics.",
+          why:"The test set has never been seen during training or hyperparameter tuning. It is the only honest measure of how the model will perform on new data. Evaluating all 8 models at once allows direct comparison across horizons and hazards in a single results table.",
+          how:"For each of the 8 models: load the fitted model, predict on the 2023–2025 test rows, compute weighted F1-score (primary metric), per-class precision and recall (especially for High and Extreme classes), and confusion matrix. Note: for a risk warning system, recall on Extreme is the most important metric — missing a real extreme event is more costly than a false alarm. Produce: one confusion matrix heatmap per model (8 total), one summary table showing weighted F1 for all 8 models vs naive baseline. Check whether XGBoost beats the naive baseline on all 8 tasks. If it does not beat persistence on any task, that task's model needs investigation before the report." },
+      ]},
+      { n:"wk 14", tasks:[
+        { p:"rev", who:"Review", short:"P3 reviews training code for leakage. P4 reviews evaluation methodology.", tag:"peer review",
+          what:"P3 reviews P1 and P2's training code for data leakage. P4 reviews P4's own evaluation methodology independently verified by P1.",
+          why:"Model training code is where leakage is most likely to be introduced accidentally — using the wrong column, fitting a scaler on the full dataset, or including test rows in a CV fold. The evaluation metrics are the numbers that will appear in the report and must be computed correctly.",
+          how:"P3: Confirm that scalers, sample weight calculations, and percentile cutoffs are all fitted on training data only and then applied to validation and test data. Check that no test rows (date >= 2023-01-01) appear in any training or validation fold. P1: Re-run P4's evaluation independently on one model to verify the weighted F1 computation matches. Spot-check three confusion matrix entries against raw predictions and labels." },
+        { p:"p1", who:"P1", short:"SHAP analysis for all 8 models. Feature importance plots and physical interpretation.",
+          what:"SHAP feature importance analysis for all 8 trained XGBoost models.",
+          why:"SHAP is the scientific centrepiece of the XGBoost phase. It reveals which physical variables actually drive risk predictions for Jijiga specifically. Expected finding: drought models at short horizons should be dominated by SPEI and SMI short lags; flood models should be dominated by API and tp short lags; at +14 days the lag_365 seasonal features should gain relative importance for both. If this pattern does not hold, investigate whether the lag construction is correct.",
+          how:"Use shap.TreeExplainer. For each of the 8 models compute SHAP values on the test set. Produce: a summary bar plot (mean absolute SHAP per feature) for each model — these are the feature importance rankings. A beeswarm plot for the drought +7 model and flood +7 model (most useful horizon, not trivially dominated by lag_1). A dependence plot for the top feature of each model. Check the horizon progression: plot mean absolute SHAP for lag_1 features vs lag_365 features across the four horizons for both hazards. The lag_365 share should increase from +1 to +14 days. Write a 3-paragraph physical interpretation of the SHAP findings." },
+        { p:"p2", who:"P2", short:"Performance degradation curves and predicted vs actual risk time series plots.",
+          what:"Performance degradation curve (F1 vs horizon) and predicted vs actual risk time series plots for the test period.",
+          why:"The degradation curve is the most important single chart for communicating the XGBoost results. It shows how forecast skill degrades from +1 to +14 days, which is the expected physical pattern. A flat curve is a red flag for leakage. The time series plots make model errors visually interpretable — you can see whether the model lags real events, misses spikes entirely, or produces false alarms.",
+          how:"Degradation curve: plot weighted F1-score on the y-axis against horizon (1, 3, 7, 14 days) on the x-axis, one line for drought and one for flood, with the naive persistence baseline shown as a horizontal dashed line for each. The XGBoost lines should start above the baseline at +1 day and approach it by +14 days. Time series: for 2023–2025 create a two-panel figure (drought top, flood bottom) showing predicted risk level as a step function and actual risk level as another step function, both using the 5-level colour scale (green/yellow/orange/red/purple). Highlight periods where prediction and actual diverge by more than one level." },
+        { p:"p3", who:"P3", short:"Write XGBoost model summary: 8 model cards covering performance and SHAP findings.",
+          what:"Write a model card for each of the 8 XGBoost models.",
+          why:"Model cards are a standard ML documentation practice that forces clear thinking about what each model does and does not do. Eight model cards covering both hazards and all four horizons gives assessors a complete picture and demonstrates rigour.",
+          how:"For each model write: target variable and horizon, training period, final hyperparameters, walk-forward CV F1 mean ± std, test set weighted F1, test set F1 for High and Extreme classes specifically, top 5 SHAP features with their direction of effect, known failure modes from the confusion matrix (which class pairs are most confused), and whether the model beats naive persistence. Keep each model card to half a page. Organise as a table where possible." },
+        { p:"p4", who:"P4", short:"Build three-way comparison table: Approach 1 ERA5 thresholding vs Approach 2 XGBoost (Approach 3 placeholder).",
+          what:"Build the three-way comparison table that is the centrepiece of the final results section.",
+          why:"The scientific story of this project is a clear progression: simple physical thresholding → ML classification → foundation model integration. A single comparison table showing all three side by side is the most effective way to communicate whether each step adds genuine value.",
+          how:"Create a table with columns: metric, ERA5 thresholding (Approach 1), XGBoost +1d, XGBoost +7d, XGBoost +14d, Foundation model (TBD). Rows: drought weighted F1, drought Extreme recall, flood weighted F1, flood Extreme recall, EMDAT event detection rate. Fill in Approach 1 values from Phase 3 threshold validation results. Fill in Approach 2 values from P4's test set evaluation. Leave Approach 3 as TBD — it gets completed in Phase 6." },
+      ]},
+    ]
+  },
+  {
+    id:"ph6", phase:"Phase 6 — foundation model integration (wk 15–17)",
+    what:"Run GenCast inference over Jijiga on a RunPod A100 GPU pod (Azure GPU quota was denied across all regions), extract tp and t2m from forecast outputs, compute API from forecast precipitation, apply the Phase 3 risk classifiers, and complete the three-way comparison table.",
+    why:"The foundation model is Approach 3. It replaces XGBoost's lag-based risk prediction with a physically grounded atmospheric model. GenCast forecasts future weather variables from which indices are computed — in principle capturing sudden rainfall events days in advance that no amount of lag-feature engineering can anticipate.",
+    how:"ERA5 inputs prepared locally (8 targeted init dates, 1° global, 12-hourly pairs). Uploaded to Azure Blob. RunPod A100 SXM4 80 GB pod started. GenCast environment installed (JAX 0.6 + graphcast). Two compatibility fixes applied: jax.P renamed to jax.sharding.PartitionSpec; splash_attention swapped to triblockdiag_mha (GPU-compatible). Inference ran: 8 init dates × 8 ensemble members × 20 steps. Jijiga point extracted, outputs uploaded to Blob. Indices and risk labels computed locally. Pod terminated.",
+    weeks:[
+      { n:"wk 15", tasks:[
+        { p:"p1", who:"P1", short:"Set up RunPod A100 pod. Install GenCast (JAX + graphcast). Fix two JAX compatibility issues.",
+          what:"Create a RunPod Secure Cloud pod with A100 SXM4 80 GB and install the complete GenCast environment. Azure GPU quota was denied across all regions (France Central, UK South, North Europe, Germany West Central, Sweden Central) due to subscription-level restrictions.",
+          why:"RunPod provides the same A100 hardware at €1.49/hr on Secure Cloud (no eviction). Azure GPU quota denial was instant and consistent across all regions, making RunPod the fastest viable alternative.",
+          how:"RunPod: deploy Secure Cloud pod, GPU=A100-SXM4-80GB, template=RunPod PyTorch 2.2, SSH enabled. SSH in. Install JAX: pip install 'jax[cuda12]'. Clone graphcast repo and pip install -e. Apply two compatibility fixes: (1) patch rollout.py — jax.P removed in JAX 0.6, replace with jax.sharding.PartitionSpec; (2) swap attention type in denoiser_architecture_config from splash_mha (TPU-only) to triblockdiag_mha before constructing GenCast. Authenticate with gcloud to access dm_graphcast GCS bucket. Download GenCast 1p0deg checkpoint (219 MB) and normalization stats. Verify: python3 -c 'import jax; print(jax.devices())' must show CudaDevice." },
+        { p:"p2", who:"P2", short:"Earth-2 evaluation skipped — GenCast chosen directly based on Azure quota constraints.",
+          what:"Earth-2 / FourCastNetv2 evaluation was planned but not executed. GenCast was selected as the sole foundation model.",
+          why:"Azure GPU quota was denied before any VM was created, removing the option to run both models side-by-side. With 2 weeks remaining, effort was focused on running GenCast well rather than attempting two models. GenCast is the more scientifically appropriate choice (probabilistic ensemble vs deterministic FourCastNetv2).",
+          how:"Decision documented: GenCast 1p0deg chosen. Earth-2 FourCastNetv2-small would have required different ERA5 input variables (~73 channels vs GenCast's 13) and a separate download. Running Earth-2 on T4 (16GB) would have been feasible but comparison quality would have been low given the time constraints. See docs/phase6_documentation.md for the full decision rationale." },
+        { p:"p3", who:"P3", short:"Download global ERA5 for 8 targeted init dates. Fix 12h timestep mismatch. Upload to Blob.",
+          what:"Prepare ERA5 input files in GenCast's exact required format for 8 targeted init dates covering key climate events in the 2023–2024 test period.",
+          why:"GenCast requires global ERA5 at 1° resolution. The project's existing Jijiga single-point ERA5 cannot be used. Targeting 8 specific dates avoids downloading the full 2-year test period (~500 CDS requests) while still covering the key events.",
+          how:"Key discovery: GenCast uses 12-hourly timesteps (T and T+12h), not 6-hourly as assumed. Also missing: sea_surface_temperature and land_sea_mask in initial download. Required files per init date: T-6h surface (for 12h precip), T surface+pressure, T+6h surface (for 12h precip), T+12h surface+pressure. CDS API returns surface variables as ZIP archives in new API version — unzip-and-merge step added to download script. Preprocessed into GenCast input format using src/preprocess_gencast_inputs.py (uses 20-step ERA5 example from GCS as structural template). Uploaded to model-artifacts Blob container." },
+        { p:"p4", who:"P4", short:"RunPod cost monitoring and documentation. No Azure VM auto-shutdown needed.",
+          what:"Document the RunPod workflow and monitor GPU costs. RunPod Secure Cloud pods do not have Azure-style auto-shutdown but bill by the minute and can be stopped via the web UI.",
+          why:"RunPod charges stop as soon as the pod is stopped. The risk is lower than Azure spot VMs (no hidden charges for 'stopped but not deallocated' state). Cost monitoring is simpler: check the RunPod billing dashboard.",
+          how:"RunPod billing: €1.49/hr, billed per minute, stops when pod is stopped. Total inference session: ~3.5 hours = ~€5.20. Pod terminated after confirming all outputs uploaded to Azure Blob. Full cost audit saved to src/data/processed/azure_cost_audit.csv. Procedure documented in docs/phase6_documentation.md." },
+      ]},
+      { n:"wk 16", tasks:[
+        { p:"p1", who:"P1", short:"Run GenCast inference on RunPod: 8 init dates, 8-member ensemble, 10-day forecasts. Upload to Blob.",
+          what:"Run GenCast 1° ensemble inference for 8 targeted init dates. Extract Jijiga grid point (42.75°E, 9.25°N), aggregate 12-hourly to daily, upload results to Azure Blob.",
+          why:"8 targeted init dates covering key 2023–2024 climate events were sufficient to evaluate GenCast and complete the comparison table, while being achievable within the remaining time and budget.",
+          how:"Download preprocessed GenCast input files from Azure Blob to RunPod pod. Run src/run_gencast_inference.py: loads GenCast 1p0deg checkpoint, builds predictor with triblockdiag_mha attention, runs chunked_prediction_generator_multiple_runs (8 members, 20 steps, 1 step per chunk). JIT compilation on first init date: ~5 min. Per-date runtime: ~19 min (7s per chunk). Total: ~2.6 hours GPU time. Output per date: tp_daily_m (m/day) and t2m_daily_K (K) for 10 days × 8 ensemble members. Saved as gencast_jijiga_YYYYMMDD.nc, uploaded to model-artifacts/gencast_outputs/. Pod terminated after confirming all 8 files uploaded." },
+        { p:"p2", who:"P2", short:"Post-process GenCast outputs: compute API, flood risk. Compare to ERA5 actuals.",
+          what:"Compute API from GenCast forecast precipitation (initialised from ERA5 API at each init date), apply Phase 3 flood classifier, compare ensemble mean risk to actual ERA5 flood risk.",
+          why:"GenCast outputs raw weather variables (tp, t2m). The risk classifiers expect index values. API can be computed from forecast precipitation. SMI and total_ro are not forecast by GenCast — held at ERA5 init-date values as the best available approximation.",
+          how:"src/postprocess_gencast_results.py: loads all 8 gencast_jijiga_*.nc files. For each init date: gets ERA5 API, SMI, SPEI at init date from era5_labeled.parquet. Per ensemble member: computes API forward-recursion (k=0.92, init from ERA5). Computes flood score (0.40×norm_API + 0.35×norm_SMI_constant + 0). Applies Phase 3 flood percentile thresholds. Reports ensemble mean and max. Saves gencast_forecast_results.csv (80 rows). Updates comparison_table.csv with real GenCast values." },
+        { p:"rev", who:"Review", short:"Self-review of index computation. Verified API decay, normalisation params, and threshold application match Phase 3.", tag:"peer review",
+          what:"Review that GenCast index computations use identical formulas and training-period parameters as Phase 3. Formal peer review was not possible (solo execution of Phase 6).",
+          why:"The three-way comparison is only valid if all three approaches use the same index formulas and classifiers. This was confirmed by code inspection and cross-checking against Phase 3 outputs.",
+          how:"Confirmed: API decay k=0.92, initialised from ERA5 api_92 at each init date. Flood normalisation min/max fitted on 2001-2022 training data only (matching Phase 3). Flood percentile thresholds p65/p80/p90/p97 from same training period. SPEI forward-filled from ERA5 init-date value. SMI held at ERA5 init-date value. All cross-checked against era5_labeled.parquet values." },
+        { p:"p4", who:"P4", short:"GenCast vs Earth-2 comparison skipped — GenCast chosen directly. Decision documented.",
+          what:"The planned GenCast vs Earth-2 comparison was not performed. GenCast was selected as the sole foundation model based on the team decision made at the start of Phase 6.",
+          why:"The team decided from the outset to run GenCast, not Earth-2. Earth-2 (FourCastNetv2) is deterministic — no ensemble, no uncertainty quantification. GenCast is probabilistic (ensemble diffusion model), which is scientifically more appropriate for a risk forecasting system. Running both would have doubled the ERA5 download and preprocessing work for limited scientific benefit.",
+          how:"Decision made at project start: GenCast chosen. Earth-2 was noted as a backup in case GenCast proved impossible to run (e.g. VRAM too high, weights inaccessible). Neither condition occurred — GenCast ran successfully on RunPod A100 after the jax.P and splash_attention fixes. Earth-2 would have required downloading ~73 ERA5 channels (vs GenCast's 13), a separate preprocessing pipeline, and separate inference code." },
+      ]},
+      { n:"wk 17", tasks:[
+        { p:"p1", who:"P1", short:"EMDAT evaluation: March 2023 flood case. Three-way comparison table completed.",
+          what:"Evaluate GenCast risk predictions against the one EMDAT flood event in the test period (March 2023, Dhawa Zone, Somali Region) and complete the three-way comparison table with real GenCast values.",
+          why:"The comparison table is the centrepiece of the results section. Completing it with real GenCast numbers (not simulation proxies) is the primary scientific deliverable of Phase 6.",
+          how:"GenCast init date 2023-03-01 (14-day lead before the EMDAT event) produced zero flood risk for days March 2–11. ERA5 peak flood risk occurred later in March — outside the 10-day GenCast horizon. Comparison table updated: Flood macro recall +1d=0.50, +7d=0.13, +10d=0.16 (vs XGBoost 0.71/0.42, ERA5 threshold 0.81/0.48). Lower GenCast performance is structural — SMI and total_ro (60% of flood score) cannot be forecast by GenCast and are held constant. Results in src/data/processed/comparison_table.csv." },
+        { p:"p2", who:"P2", short:"Three-way comparison chart. Case study: March 2023 flood (single EMDAT event in test period).",
+          what:"Three-way comparison figure and case study for the March 2023 EMDAT flood. Only one EMDAT flood event exists in the 2023–2025 test period, limiting the planned three-event case study to a single event.",
+          why:"The comparison figure visualises the relationship between the three approaches. The case study contextualises why GenCast scored lower — the flood peaked after the GenCast forecast horizon from the 2023-03-01 init date.",
+          how:"Three-panel figure: Approach 1 (ERA5 threshold), Approach 3 (GenCast Oct 2023 init), actual flood_risk_t_plus_7. EMDAT event marker added. Case study: March 2023 flood — GenCast init 2023-03-01 covered days 2-11, event peaked later. The Oct 2023 El Niño onset init date shows GenCast correctly forecasting elevated tp but insufficient to breach flood threshold due to frozen SMI. Figures saved: phase6_gencast_flood_risk.png, phase6_comparison.png, phase6_degradation.png." },
+        { p:"p3", who:"P3", short:"Miss analysis: March 2023 flood outside GenCast horizon. Structural limitations documented.",
+          what:"Systematic miss analysis for all EMDAT events and identification of miss patterns specific to the GenCast implementation.",
+          why:"Honest documentation of failure modes is as important as reporting successes. The GenCast miss patterns are different from ERA5/XGBoost misses and reveal structural limitations of the approach.",
+          how:"Miss categories identified: (1) GenCast horizon limit — March 2023 EMDAT event peaked after day 10 from 2023-03-01 init; (2) Frozen SMI/total_ro — API alone insufficient to breach flood thresholds at this arid location during most init dates; (3) Wabi Shabelle upstream floods — no local ERA5 precipitation signal (affects all three approaches equally). All misses documented in phase6_foundation_model.ipynb miss analysis cell and docs/phase6_documentation.md." },
+        { p:"p4", who:"P4", short:"Cost audit complete. RunPod pod terminated. Azure Blob Storage retained until submission.",
+          what:"Final cost audit covering all Phase 6 spending. RunPod pod terminated after confirming all outputs uploaded. Azure Blob Storage retained for report revision access.",
+          why:"GPU compute stops billing as soon as the RunPod pod is terminated. Azure Blob Storage is negligible cost (~€0.02/GB/month) and must remain accessible for the report phase.",
+          how:"RunPod: pod terminated after inference confirmed complete. Total GPU time ~3.5 hours. Azure: Blob Storage account era5project remains active. No Azure VM was ever created (quota denied). Total Phase 6 spend: RunPod €5.40 + Azure Blob €12.60 = ~€18. Budget remaining: ~€382 of €400. Cost breakdown CSV: src/data/processed/azure_cost_audit.csv." },
+      ]},
+    ]
+  },
+  {
+    id:"ph7", phase:"Phase 7 — report & presentation (wk 18–20)",
+    what:"Write the final report, cross-review all sections, build the presentation, and clean the codebase. Each person writes the section they know best, then reviews someone else's section.",
+    why:"The report and presentation are the primary assessed deliverables. A technically excellent project with a poorly written report will score below its potential. The cross-review is quality control and the best exam preparation available.",
+    how:"Write draft sections in week 18. Cross-review in week 19. Finalise, rehearse, and package in week 20.",
+    weeks:[
+      { n:"wk 18", tasks:[
+        { p:"p1", who:"P1", short:"Report: introduction, data section, and daily aggregation methodology.",
+          what:"Write the introduction and data sections of the final report.",
+          why:"P1 built the daily aggregation pipeline and knows the data preparation in most detail.",
+          how:"Introduction: problem statement (flood and drought early warning for Jijiga, why 14-day advance notice matters), scope of the PoC, three-approach comparison overview. Data: ERA5 variables selected, Jijiga grid point choice and justification, 6-hourly to daily aggregation rules per variable, 2000–2025 date range, train/test split rationale, EMDAT role in validation only. Include a table of all variables with their units and aggregation rule." },
+        { p:"p2", who:"P2", short:"Report: index computation methodology (SPEI, API, SMI, composite flood score).",
+          what:"Write the index computation methodology section.",
+          why:"P2 computed SPEI and the flood composite score and understands the theoretical basis for each.",
+          how:"Cover each index with its formal definition: SPEI — log-logistic distribution, reference period 2000–2022, monthly accumulation then daily disaggregation. API — exponential decay formula with k=0.92, physical justification for the decay constant, initialisation. SMI — field capacity normalisation formula with cited values. Composite flood score — weights and physical justification for excluding SPEI. Drought modifier rule — SPEI thresholds and API/SMI modifier logic. Include the class distribution table for all 8 target variables." },
+        { p:"p3", who:"P3", short:"Report: XGBoost methodology, feature engineering, walk-forward CV, SHAP findings.",
+          what:"Write the XGBoost methodology and results section.",
+          why:"P3 ran the hyperparameter tuning and wrote the model cards.",
+          how:"Cover: feature matrix construction (40 lag features, lag choices justified by ACF analysis from Phase 3), naive persistence baseline rationale, walk-forward CV design and why a simple train/test split would be insufficient, hyperparameter tuning approach and final chosen values, class imbalance handling via sample weights, SHAP methodology. Results: performance degradation curve, three-way comparison table with XGBoost columns filled in, top SHAP features per model with physical interpretation, honest assessment of where XGBoost beats and does not beat the naive baseline." },
+        { p:"p4", who:"P4", short:"Report: foundation model section, three-way comparison, case studies, conclusions.",
+          what:"Write the foundation model section, three-way comparison, case studies, and conclusions.",
+          why:"P4 ran the cost audit and the final EMDAT validation, giving a complete view of the project outcome.",
+          how:"Foundation model: which model was chosen and why, inference pipeline (ERA5 state → forecast → index computation → risk classification), how API initialisation was handled at forecast start. Three-way comparison: the completed table with all three approaches. Case studies: the three deep dives from Phase 6. Conclusions: what each approach adds over the previous, key SHAP findings, honest EMDAT detection rates. Limitations: single grid point, monthly SPEI disaggregation artefact, GenCast 1° resolution vs Jijiga micro-climate, 14-day forecast horizon limit. Future work: sub-daily resolution, spatial expansion, ENSO/IOD features, operational real-time pipeline." },
+      ]},
+      { n:"wk 19", tasks:[
+        { p:"rev", who:"Review", short:"P1↔P3 swap and edit. P2↔P4 swap and edit. Final consistency pass. Merge.", tag:"peer review",
+          what:"Full cross-review: P1 and P3 swap sections and edit. P2 and P4 swap and edit. One person does a final consistency pass over the merged document.",
+          why:"Every section was written by someone who knows their area deeply and unconsciously assumes knowledge the reader does not have. The cross-review catches this, plus number inconsistencies between sections, undefined acronyms, and contradictions.",
+          how:"Exchange drafts at an agreed time. Reviewers use tracked changes. Check: every number in the results section matches the comparison table exactly, every acronym is defined on first use, no section contradicts another, the narrative flows logically from introduction through to conclusions. Authors address all comments. One designated person reads the complete merged document end to end and makes final consistency edits before week 20." },
+        { p:"p3", who:"P3", short:"Technical appendix: pipeline diagram, formal index definitions, cost breakdown.",
+          what:"Write the technical appendix.",
+          why:"Appendix material gives technically rigorous assessors the depth they need without cluttering the main report.",
+          how:"Include: full pipeline architecture diagram showing all three approaches from ERA5 input to risk output, formal mathematical definitions of all four indices with the exact parameters used, complete cost breakdown (Azure Blob + RunPod GPU) vs original €400 budget, list of all ERA5 variables downloaded with CDS API shortnames and units, XGBoost hyperparameter table for all 8 models, GenCast compatibility fixes and infrastructure decision log (see docs/phase6_documentation.md)." },
+        { p:"p4", who:"P4", short:"Repository cleanup: README, requirements.txt, remove secrets, tag v1.0.",
+          what:"Final codebase cleanup and repository preparation.",
+          why:"A well-organised repository is assessed alongside the report.",
+          how:"Ensure .env is gitignored and no credentials exist in git history (use BFG Repo Cleaner if any were ever committed). Write a thorough README: project overview, Jijiga grid point coordinates, repository structure with description of each folder, local environment setup, how to run each phase in order, where data lives on Blob Storage. Run pip freeze > requirements.txt. Tag the final commit v1.0." },
+        { p:"p1", who:"P1", short:"Build presentation slide deck.",
+          what:"Build the slide deck for the final presentation.",
+          why:"The slides must tell a clear progression that non-expert assessors can follow.",
+          how:"Slides: 1) Problem — why Jijiga, why 14-day early warning. 2) Data — ERA5 at daily resolution, four indices with their physical meaning. 3) Approach 1: index thresholding — method and EMDAT validation. 4) Approach 2: XGBoost — method, degradation curve, SHAP top features. 5) Approach 3: foundation model — pipeline, what it adds. 6) Three-way comparison table. 7) Case study — one strong example where approaches differ. 8) Limitations and future work. Max 14 slides. Run timed rehearsal with the full team." },
+      ]},
+      { n:"wk 20", tasks:[
+        { p:"p2", who:"P2", short:"Record results walkthrough video: narrated explanation of key findings, max 5 minutes.",
+          what:"Record a narrated video walking through the key results.",
+          why:"A pre-recorded video ensures the results can be clearly communicated even if live demo time is limited. It is also a permanent record of the project.",
+          how:"Use OBS or Loom. Walk through: the three-way comparison table explaining each row, the performance degradation curve for XGBoost, the best case study showing the foundation model adding value, the top 3 SHAP features with physical interpretation. Narrate clearly without jargon. Max 5 minutes, export at 1080p." },
+        { p:"p3", who:"P3", short:"Final presentation rehearsal and complete report read-through.",
+          what:"Full presentation rehearsal and final read-through of the complete merged report.",
+          why:"Rehearsing reveals timing problems and unclear sections. A final read catches anything that survived the cross-review.",
+          how:"Present to the full team including the results video. Time it — cut anything over 15 minutes. Every team member reads the complete merged report and flags any remaining issues before submission." },
+        { p:"p4", who:"P4", short:"Package all deliverables for submission.",
+          what:"Package all deliverables for final submission.",
+          why:"Having everything in one place prevents last-minute scrambling.",
+          how:"Submission package: final report PDF, GitHub repository link (confirm it is public and v1.0 tag is on the correct commit), results video link or file, one-page project summary. Confirm all figures in the PDF are readable at A4 size. Double-check all links work." },
+        { p:"p1", who:"P1", short:"Buffer: final fixes, contingency, and submission confirmation.",
+          what:"Buffer time: address any outstanding issues and confirm submission.",
+          why:"Something always needs a last fix. Buffer absorbs this.",
+          how:"Address any remaining issues flagged during rehearsal or the final report read. Confirm the Azure Blob Storage account will remain accessible until after any possible reassessment period. Submit." },
+      ]},
+    ]
+  },
+];
+
+var currentFilter = 'all';
+var selectedEl = null;
+
+function filter(p, el) {
+  currentFilter = p;
+  document.querySelectorAll('.leg-btn').forEach(function(b){ b.classList.remove('active'); });
+  el.classList.add('active');
+  render();
+  closePanel();
+}
+
+function showPhasePanel(phaseId) {
+  var phase = PHASES.find(function(d){ return d.id === phaseId; });
+  if (!phase) return;
+  if (selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = document.getElementById('phl-' + phaseId);
+  if (selectedEl) selectedEl.classList.add('selected');
+  setPanel('type-phase', 'Phase overview', phase.phase, phase.what, phase.why, phase.how);
+}
+
+function showTaskPanel(taskEl, task) {
+  if (selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = taskEl;
+  taskEl.classList.add('selected');
+  var typeLabel = task.p === 'rev' ? 'Peer review' : ('Person ' + task.who.replace('P',''));
+  setPanel('type-' + task.p, typeLabel, task.short, task.what, task.why, task.how);
+}
+
+function setPanel(typeClass, typeText, title, what, why, how) {
+  document.getElementById('pd-type').className = 'panel-type ' + typeClass;
+  document.getElementById('pd-type').textContent = typeText;
+  document.getElementById('pd-title').textContent = title;
+  setSection('pd-what', 'wrap-what', what);
+  setSection('pd-why',  'wrap-why',  why);
+  setSection('pd-how',  'wrap-how',  how);
+  document.getElementById('panel').classList.add('open');
+}
+
+function setSection(id, wrapperId, text) {
+  var el = document.getElementById(id);
+  var wrap = document.getElementById(wrapperId);
+  if (text && text.trim()) { el.textContent = text; wrap.style.display = 'block'; }
+  else { wrap.style.display = 'none'; }
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.remove('open');
+  if (selectedEl) { selectedEl.classList.remove('selected'); selectedEl = null; }
+}
+
+function render() {
+  var tl = document.getElementById('tl');
+  tl.innerHTML = '';
+  PHASES.forEach(function(phase) {
+    var pb = document.createElement('div');
+    pb.className = 'phase-block';
+    var pl = document.createElement('div');
+    pl.className = 'phase-label';
+    pl.id = 'phl-' + phase.id;
+    pl.innerHTML = '<span class="plt">' + phase.phase + '</span>';
+    pl.onclick = (function(pid){ return function(){ showPhasePanel(pid); }; })(phase.id);
+    pb.appendChild(pl);
+    phase.weeks.forEach(function(week) {
+      var wr = document.createElement('div');
+      wr.className = 'week-row';
+      var wn = document.createElement('div');
+      wn.className = 'week-num';
+      wn.textContent = week.n;
+      wr.appendChild(wn);
+      var wt = document.createElement('div');
+      wt.className = 'week-tasks';
+      week.tasks.forEach(function(task) {
+        var t = document.createElement('div');
+        t.className = 'task ' + task.p;
+        if (!task.who) { t.classList.add('hidden-task'); wt.appendChild(t); return; }
+        if (currentFilter !== 'all' && task.p !== currentFilter) t.classList.add('dimmed');
+        var disp = task.short || '';
+        if (disp.length > 80) disp = disp.slice(0, 78) + '…';
+        var html = '<div class="who">' + task.who + '</div><div class="what">' + disp + '</div>';
+        if (task.tag) html += '<span class="tag">' + task.tag + '</span>';
+        t.innerHTML = html;
+        t.onclick = (function(tk){ return function(e){ e.stopPropagation(); showTaskPanel(t, tk); }; })(task);
+        wt.appendChild(t);
+      });
+      wr.appendChild(wt);
+      pb.appendChild(wr);
+    });
+    tl.appendChild(pb);
+  });
+}
+
+render();
+</script>
+</body>
+</html>

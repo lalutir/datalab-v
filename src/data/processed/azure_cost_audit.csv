@@ -1,0 +1,7 @@
+Resource,Type,EUR,Notes
+Azure Blob Storage (era5-data),Storage,12.0,"~300 GB ERA5, LRS"
+Azure Blob Storage (model-artifacts),Storage,0.6,GenCast checkpoint + outputs
+RunPod A100 SXM4 80GB — environment setup,Compute,1.5,~1 hr @ €1.49/hr
+RunPod A100 SXM4 80GB — GenCast inference,Compute,3.9,~2.6 hrs @ €1.49/hr (8 init dates)
+CDS API (ERA5 download),Data,0.0,Free (Copernicus Climate Data Store)
+Azure GPU quota requests (denied),Compute,0.0,No charge for denied quota requests

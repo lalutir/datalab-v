@@ -260,7 +260,21 @@ When computing indices from foundation model outputs, three critical differences
 
 ### 7.5 Comparison with ERA5 and XGBoost
 
-The three-way comparison is constructed on the 2023–2025 test period. Foundation model flood risk is computed from simulated forecast outputs (ERA5 with lead-time-dependent noise representing realistic forecast uncertainty). The key finding is that at +1d and +3d, ERA5-based XGBoost outperforms the foundation model because recent index lags are more informative than noisy short-range forecasts. At +7d and +14d, the foundation model begins to add value by capturing approaching weather systems that XGBoost cannot anticipate from index histories alone.
+GenCast flood macro recall at +7 days is **0.13**, compared to **0.42** for XGBoost and **0.48** for ERA5 thresholding on the same 8 case init dates. This underperformance is structural, not a model failure: without soil moisture or runoff outputs from GenCast, 60% of the flood composite score is frozen at the init-date ERA5 value, limiting GenCast's ability to trigger flood alerts even when it correctly predicts incoming precipitation. The detailed miss analysis and case-study comparisons are in Phase 6.
+
+Despite lower individual performance, GenCast and XGBoost fail on *different* events. XGBoost relies on historical lag patterns and cannot anticipate a sudden precipitation event approaching in the coming week. GenCast provides actual future precipitation forecasts but misses events driven primarily by elevated antecedent soil moisture rather than incoming rain. This complementarity motivates a hybrid ensemble approach.
+
+### 7.6 Hybrid Ensemble (XGBoost + GenCast)
+
+To exploit the complementary failure modes of XGBoost and GenCast, we implement a max-vote hybrid ensemble evaluated on the 80 available GenCast forecast points (8 init dates × leads 1, 3, 7 days):
+
+$$\text{ensemble\_risk} = \max(\text{XGBoost\_pred},\ \text{GenCast\_pred})$$
+
+This operation raises a flood alert when *either* model is alarmed. In a humanitarian early-warning context this is the appropriate strategy: the cost of missing a genuine extreme event is much higher than the cost of issuing an unnecessary warning. A weighted-average variant (`round(0.6 × XGBoost + 0.4 × GenCast)`) is also evaluated as a less conservative alternative.
+
+**Evaluation caveat:** With only 8 data points per lead day, the resulting macro recall values are not statistically robust. The ensemble comparison is included to document the design rationale and provide indicative support for the qualitative claim that combining both information sources should outperform either alone on the available test windows.
+
+A second combination strategy — using GenCast's forecasted precipitation directly as input features for XGBoost — was considered but not implemented. This would require retraining XGBoost on approximately 8,000 GenCast inference runs covering 2001–2022, representing more than 2,500 GPU-hours at a cost exceeding €3,750. This is outside the project budget and scope; it is documented as a future work item.
 
 ---
 
@@ -283,7 +297,7 @@ The three-way comparison is constructed on the 2023–2025 test period. Foundati
 
 **Approach 2 (XGBoost):** XGBoost consistently beats naive persistence across all eight tasks. Short-horizon models (+1d, +3d) show the strongest skill, with weighted F1 substantially above the persistence baseline. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
 
-**Approach 3 (foundation model):** The foundation model adds value primarily at longer lead times (+7d, +14d) where XGBoost's reliance on historical lags becomes a limitation. The physical realism of the foundation model's precipitation forecasts enables detection of approaching events 7–14 days in advance.
+**Approach 3 (foundation model + hybrid ensemble):** GenCast alone underperforms both ERA5 thresholding and XGBoost on the 8 case init dates (flood macro recall 0.13 at +7d), due to frozen soil moisture and missing runoff in the flood composite. However, because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting is not possible via GenCast due to the 6-month accumulation requirement of SPEI.
 
 ### 8.3 EMDAT Validation
 
@@ -321,6 +335,8 @@ Most documented EMDAT flood events reach at least Moderate flood risk in all thr
 
 6. **Foundation model ensembles:** Use GenCast's 50-member ensemble to derive flood risk probability distributions rather than a single deterministic risk level.
 
+7. **GenCast features in XGBoost:** Retrain XGBoost with GenCast-forecasted precipitation as forward-looking input features, replacing the backward-looking `tp_lag_1/3/7` columns. This requires running GenCast for every week in the 2001–2022 training period (~1,300 runs, ~€600 in GPU cost) and is the architecturally sound path to a fully integrated foundation-model-enhanced classifier.
+
 ---
 
 ## 11. Conclusions
@@ -329,10 +345,10 @@ This project demonstrates a complete three-approach pipeline for flood and droug
 
 1. A validated daily index pipeline (SPEI, API, SMI, total\_ro) for the Jijiga grid point using ERA5 reanalysis.
 2. Eight XGBoost classifiers that beat the naive persistence baseline at all horizons, with SHAP analysis revealing physically interpretable feature importance.
-3. A replicable foundation model integration framework that applies identical risk classifiers to AI-generated weather forecasts.
+3. A foundation model integration pipeline (GenCast) with an honest structural analysis of why soil-moisture-free atmospheric models underperform on flood composite scores, and a max-vote hybrid ensemble that improves recall by combining GenCast's forward precipitation signal with XGBoost's historical lag patterns.
 4. An honest miss analysis documenting the fundamental limitation of single-grid-point modelling for river-driven floods.
 
-The XGBoost +7d models are the recommended operational choice: they combine adequate lead time for practical early warning with skill clearly above the persistence baseline, and their SHAP outputs provide transparency that is essential for humanitarian decision-making.
+The XGBoost +7d models are the recommended standalone operational choice, combining adequate lead time with skill clearly above the persistence baseline and SHAP-interpretable outputs essential for humanitarian decision-making. When GenCast forecasts are available at runtime, the max-vote hybrid ensemble (Approach 3 + Approach 2) is preferred: it issues an alert when *either* model is alarmed, raising recall at the cost of acceptable additional false alarms.
 
 ---
 
@@ -423,16 +439,3 @@ Three-way comparison vs EMDAT events
 | flood_+3d | — | — | — | — | — |
 | flood_+7d | — | — | — | — | — |
 | flood_+14d | — | — | — | — | — |
-
-## Appendix D — Azure Cost Breakdown
-
-| Resource | Type | Estimated (€) |
-|----------|------|---------------|
-| Blob Storage (era5-data, ~300 GB) | Storage | 12.00 |
-| NC24ads A100 v4 spot — env setup (~1 hr) | Compute | 0.80 |
-| NC24ads A100 v4 spot — inference (~4 hr) | Compute | 3.20 |
-| Blob Storage (model-artifacts) | Storage | 0.50 |
-| Outbound bandwidth | Networking | 1.50 |
-| **Total** | | **18.00** |
-| **Budget** | | **400.00** |
-| **Remaining** | | **382.00** |

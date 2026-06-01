@@ -1,8 +1,11 @@
 """Helper script to generate the risk modelling notebook via nbformat."""
 
 import json
+import os
 import nbformat
 from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
+
+os.makedirs("figures", exist_ok=True)
 
 nb = new_notebook()
 cells = []
@@ -122,7 +125,7 @@ axes[-1].set_xlabel("Datum")
 fig.suptitle("ERA5 Klimaatindices – dagelijkse waarden (2000–2025)",
              fontsize=14, fontweight="bold", y=1.01)
 plt.tight_layout()
-plt.savefig("overzicht_tijdreeksen.png", bbox_inches="tight")
+plt.savefig("figures/overzicht_tijdreeksen.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -177,7 +180,7 @@ for i, col in enumerate(TARGET_COLS):
               title=f"PACF – {col.upper()}", zero=False, method="ywm")
 
 plt.tight_layout()
-plt.savefig("acf_pacf.png", bbox_inches="tight")
+plt.savefig("figures/acf_pacf.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -195,7 +198,7 @@ for ax, col in zip(axes, TARGET_COLS):
 plt.suptitle("Additieve seizoensdecompositie (maandelijkse data, periode=12)",
              fontsize=13, y=1.01)
 plt.tight_layout()
-plt.savefig("seizoensdecompositie.png", bbox_inches="tight")
+plt.savefig("figures/seizoensdecompositie.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -268,7 +271,7 @@ for ax, col in zip(axes, TARGET_COLS):
 plt.suptitle("SARIMA: voorspellingen vs. werkelijke waarden (testset 2023–2025)",
              fontsize=13, y=1.01)
 plt.tight_layout()
-plt.savefig("sarima_resultaten.png", bbox_inches="tight")
+plt.savefig("figures/sarima_resultaten.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -319,7 +322,7 @@ for ax, col in zip(axes, TARGET_COLS):
 plt.suptitle("Holt-Winters: voorspellingen vs. werkelijke waarden",
              fontsize=13, y=1.01)
 plt.tight_layout()
-plt.savefig("holtwinters_resultaten.png", bbox_inches="tight")
+plt.savefig("figures/holtwinters_resultaten.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -373,7 +376,7 @@ for ax, col in zip(axes, TARGET_COLS):
 plt.suptitle("Random Forest: voorspellingen vs. werkelijke waarden",
              fontsize=13, y=1.01)
 plt.tight_layout()
-plt.savefig("rf_resultaten.png", bbox_inches="tight")
+plt.savefig("figures/rf_resultaten.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -385,7 +388,7 @@ fi.plot.barh(ax=ax, color="steelblue", edgecolor="white")
 ax.set_title("Feature importantie – Random Forest SPEI", fontweight="bold")
 ax.set_xlabel("Importantie (mean decrease impurity)")
 plt.tight_layout()
-plt.savefig("rf_feature_importance.png", bbox_inches="tight")
+plt.savefig("figures/rf_feature_importance.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -426,7 +429,7 @@ for ax, metric in zip(axes, ["RMSE", "MAE", "R²"]):
 
 plt.suptitle("Modelcomparisatie op testset (2023–2025)", fontsize=13, y=1.02)
 plt.tight_layout()
-plt.savefig("model_vergelijking.png", bbox_inches="tight")
+plt.savefig("figures/model_vergelijking.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -506,7 +509,7 @@ ax2.set_title("Dagelijks droogterisico (2000–2025)", loc="left")
 ax2.legend(handles=RISK_LEGEND, fontsize=8, ncol=5, loc="upper right")
 
 plt.tight_layout()
-plt.savefig("droogterisico_historisch.png", bbox_inches="tight")
+plt.savefig("figures/droogterisico_historisch.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -573,7 +576,7 @@ ax3.set_title("Dagelijks overstromingsrisico (2000–2025)", loc="left")
 ax3.legend(handles=RISK_LEGEND, fontsize=8, ncol=5, loc="upper right")
 
 plt.tight_layout()
-plt.savefig("overstromingsrisico_historisch.png", bbox_inches="tight")
+plt.savefig("figures/overstromingsrisico_historisch.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -599,7 +602,7 @@ ax.set_title("Gemiddeld risico per kalendermaand (2000–2025)", fontweight="bol
 ax.legend(["Droogterisico", "Overstromingsrisico"])
 ax.tick_params(axis="x", rotation=0)
 plt.tight_layout()
-plt.savefig("seizoensrisico.png", bbox_inches="tight")
+plt.savefig("figures/seizoensrisico.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -643,7 +646,7 @@ for ax, col, color in zip(axes, TARGET_COLS, COLORS):
 plt.suptitle(f"18-maanden prognose ({FORECAST_MONTHS} maanden) – beste model per index",
              fontsize=13, y=1.01)
 plt.tight_layout()
-plt.savefig("toekomstprognose.png", bbox_inches="tight")
+plt.savefig("figures/toekomstprognose.png", bbox_inches="tight")
 plt.show()
 """)
 
@@ -702,7 +705,7 @@ for ax, (risk_series, title, color) in zip(axes, [
     ax.legend(handles=RISK_LEGEND, fontsize=8, ncol=5)
 
 plt.tight_layout()
-plt.savefig("toekomstig_risico.png", bbox_inches="tight")
+plt.savefig("figures/toekomstig_risico.png", bbox_inches="tight")
 plt.show()
 """)
 
