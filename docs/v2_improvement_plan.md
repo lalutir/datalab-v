@@ -7,6 +7,28 @@ and a ready-to-paste Claude Code prompt for each task.
 
 ---
 
+## Fast path to Africa expansion
+
+If the goal is to reach the Africa expansion (v3) as quickly as possible, not all v2
+improvements need to be done first. The table below shows what is required, recommended,
+or skippable on the way to Africa.
+
+| # | Improvement | Africa status | Reason |
+|---|---|---|---|
+| 1 | ENSO/IOD features | **Recommended** | Download/merge logic reused in Africa Phase 4; validates the approach at small scale first |
+| 2 | Baseline fix | Skippable | Report correction only, no code that Africa depends on |
+| 3 | Probabilistic output | Skippable | Can be implemented directly at Africa scale |
+| 4 | ECMWF HRES for flood | **Required** | Africa Phase 6 explicitly extends `src/postprocess_hres_results.py` — this file must exist |
+| 5 | SEAS5 for drought | **Required** | Africa Phase 6 explicitly extends `src/postprocess_seas5_results.py` — this file must exist |
+| 6 | Upstream catchment | **Skip entirely** | Superseded by HydroSHEDS in Africa Phase 4; implementing it for Jijiga first is throwaway work |
+| 7 | Binary transition targets | Skippable | Can be added directly at Africa scale without a Jijiga version first |
+
+**Minimum v2 work before starting Africa:** Improvements 4 and 5 only (~5 days).
+**Recommended minimum:** Improvements 1, 4, 5 (~1 week) — adds climate index validation at low cost.
+**Full v2 minus the skip:** Improvements 1, 2, 3, 4, 5, 7 (~2 weeks) — complete methodology before scaling.
+
+---
+
 ## Guiding principles
 
 **Preserve all existing work.** Every improvement adds new notebook cells or new scripts — it
@@ -28,7 +50,7 @@ archive. When improvements are complete, merge `v2-improvements` into `main` and
 
 ---
 
-## Improvement 1 — ENSO/IOD features for drought XGBoost
+## Improvement 1 — ENSO/IOD features for drought XGBoost `[RECOMMENDED FOR AFRICA]`
 
 ### What
 Add monthly El Niño (Nino3.4 SST anomaly) and Indian Ocean Dipole (Dipole Mode Index) indices
@@ -117,7 +139,7 @@ Append new cells labeled `## [V2] Drought Models with ENSO/IOD`.
 
 ---
 
-## Improvement 2 — Fix the persistence baseline comparison
+## Improvement 2 — Fix the persistence baseline comparison `[SKIPPABLE — report fix only]`
 
 ### What
 Verify and correct the claim in the report that "XGBoost consistently beats naive persistence
@@ -187,7 +209,7 @@ Do not change any other part of the report.
 
 ---
 
-## Improvement 3 — Probabilistic output and calibration
+## Improvement 3 — Probabilistic output and calibration `[SKIPPABLE — can do at Africa scale directly]`
 
 ### What
 Change XGBoost evaluation to output calibrated class probabilities instead of hard risk-level
@@ -253,7 +275,7 @@ describing the calibration method and what the reliability diagrams show.
 
 ---
 
-## Improvement 4 — ECMWF HRES for Approach 3 flood (replacing GenCast)
+## Improvement 4 — ECMWF HRES for Approach 3 flood (replacing GenCast) `[REQUIRED FOR AFRICA]`
 
 ### What
 Download ECMWF HRES open data medium-range forecasts for the same 8 init dates used for
@@ -365,7 +387,7 @@ note why it resolves the GenCast SMI limitation, and report the results.
 
 ---
 
-## Improvement 5 — SEAS5 seasonal forecasts for drought (Approach 3 addition)
+## Improvement 5 — SEAS5 seasonal forecasts for drought (Approach 3 addition) `[REQUIRED FOR AFRICA]`
 
 ### What
 Download ECMWF SEAS5 seasonal forecasts from the Copernicus Climate Data Store for a set of
@@ -483,7 +505,7 @@ drought forecasting is N/A for Approach 3.
 
 ---
 
-## Improvement 6 — Multi-point Wabi Shabelle catchment features
+## Improvement 6 — Multi-point Wabi Shabelle catchment features `[SKIP — superseded by HydroSHEDS in Africa Phase 4]`
 
 ### What
 Download ERA5 for a spatial grid covering the Wabi Shabelle upstream catchment (~5×5 grid
@@ -604,7 +626,7 @@ Step 4 — Add to `notebooks/phase5_xgboost.ipynb` (new cells only, labeled
 
 ---
 
-## Improvement 7 — Transition-based binary targets
+## Improvement 7 — Transition-based binary targets `[SKIPPABLE — can do at Africa scale directly]`
 
 ### What
 Add a parallel set of binary target columns: "will flood/drought risk reach Elevated or higher
