@@ -10,7 +10,8 @@ The core scientific contribution is a **three-way comparison** of increasingly s
 |---|---|---|
 | 1 — ERA5 index thresholding | Applies SPEI/flood-score thresholds directly to ERA5-derived indices | No |
 | 2 — XGBoost multiclass classifier | Predicts future risk level from lagged index and weather features | No |
-| 3 — Foundation model pipeline | GenCast forecast → compute indices → apply fitted classifiers | Yes (Azure A100) |
+| 3 — Foundation model pipeline (flood) | GenCast/HRES forecast → compute indices → apply fitted classifiers | Yes (Azure A100) for GenCast |
+| 3 — Foundation model pipeline (drought) | SEAS5 51-member seasonal forecast → recompute SPEI-6 → McKee thresholds | No |
 
 Each approach should improve on the previous. The comparison table (built across phases 3–6) is the centrepiece of the final report.
 
@@ -32,12 +33,16 @@ src/
       era5_labeled.parquet     output of phase3
       feature_matrix.parquet   output of phase4
       baseline_scores.csv      output of phase4
+      seas5_jijiga_YYYY_MM.nc  SEAS5 system 51 forecast data (6 init months, also in Azure)
+      seas5_drought_results.csv  SEAS5 drought risk predictions (36 rows, also in Azure)
   aggregate.py / indices.py / ...   ERA5 download & preprocessing scripts
+  download_seas5_inputs.py     Download SEAS5 from CDS (system 51); --simulate flag available
+  postprocess_seas5_results.py SPEI-6 pipeline on SEAS5; writes seas5_drought_results.csv
 notebooks/
   phase3_index_eda.ipynb       SPEI-6/12, API(k=0.92), SMI(FC), risk labels → era5_labeled.parquet
   phase4_feature_engineering.ipynb  40 lag features, leakage checks, naive baseline → feature_matrix.parquet
   phase5_xgboost.ipynb         8 XGBoost classifiers, walk-forward CV, SHAP → xgb_models/
-  phase6_foundation_model.ipynb     GenCast pipeline, simulated FM results, three-way table
+  phase6_foundation_model.ipynb     GenCast pipeline, HRES pipeline, SEAS5 drought pipeline, three-way table
 report/
   final_report.md              Full written report (~2500 words)
 ```
@@ -236,10 +241,17 @@ Accept unexplained elevated risk periods with no EM-DAT entry — small local ev
 
 ## Azure infrastructure
 
-- **Blob Storage**: three containers — `era5-data` (raw NetCDF), `processed-data` (parquets), `model-artifacts` (model weights, GenCast inputs/outputs)
+- **Blob Storage**: containers and contents:
+  - `era5-data` — raw ERA5 6-hourly NetCDF zips (2000–2025, monthly)
+  - `processed-data` — processed outputs: `seas5_drought_results.csv`
+  - `model-artifacts` — model weights and forecast inputs:
+    - `gencast_inputs/` — ERA5 pressure-level files for GenCast inference
+    - `seas5_inputs/` — SEAS5 system 51 NetCDF files (6 init months, 2023–2024)
+  - `era5-africa` — ERA5 Africa-domain NetCDF files (future expansion)
 - **GPU VM**: NC24ads A100 v4, France Central, spot instance only. Deallocate (not just stop) immediately after inference. Auto-shutdown configured to 3 hours.
 - **All CPU work runs locally** on team members' Windows laptops. No CPU VM.
 - Connection string stored in `.env` file (gitignored). Load with `python-dotenv`.
+- **CDS API credentials** also in `.env` as `CDS_API_URL` and `CDS_API_KEY`. SEAS5 requires `system: '51'` (SEAS5.1 real-time, 2020-present); `system: '5'` covers pre-2020 hindcasts only. Licence for `seasonal-monthly-single-levels` must be accepted at cds.climate.copernicus.eu before first download.
 
 ---
 

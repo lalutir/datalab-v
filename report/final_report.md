@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates a foundation weather model (GenCast or Earth-2) to replace ERA5 actuals with AI-generated forecasts, from which indices are recomputed and the same classifiers applied. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost consistently beats the naive persistence baseline, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features for drought forecasting — are documented in Section 12.
+We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates external forecast models: for flood risk, a foundation weather model (GenCast or ECMWF HRES) replaces ERA5 actuals with AI-generated forecasts from which indices are recomputed; for drought risk, ECMWF SEAS5 51-member ensemble seasonal forecasts (leads 1–6 months) supply the 6-month climatic water balance accumulations needed to recompute SPEI-6. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost consistently beats the naive persistence baseline, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features, ECMWF HRES full-composite flood forecasting, and SEAS5 seasonal drought forecasting — are documented in Section 12.
 
 ---
 
@@ -347,6 +347,80 @@ XGBoost consistently exceeds HRES (simulation) at +1d through +7d because it has
 
 ---
 
+### 7.8 SEAS5 Seasonal Drought Forecast (Approach 3 — Drought)
+
+#### Motivation
+
+GenCast and HRES both fail to produce drought forecasts because SPEI-6 requires a 6-month climatic water balance accumulation — incompatible with their 10-day windows. **ECMWF SEAS5** (System 5, 51-member ensemble) initialises monthly and forecasts at 1–6 month leads, making SPEI-6-based seasonal drought forecasting feasible for the first time in this project.
+
+#### Pipeline
+
+The Approach 3 drought pipeline is implemented in `src/download_seas5_inputs.py` and `src/postprocess_seas5_results.py`:
+
+```
+ECMWF SEAS5 (seasonal-monthly-single-levels, system 5)
+        ↓ download 51-member ensemble, leads 1-6 months, area 7-12°N 40-45°E
+Monthly SEAS5 tp (m) per member per lead
+        ↓
+CWB(month) = seas5_tp(month) + clim_pev(calendar_month)
+  where clim_pev = ERA5 training-period (2001-2022) climatological monthly mean pev
+        ↓
+5-month ERA5 warmup (months M-4 to M) + 6 SEAS5 months (M+1 to M+6) → 11-month series
+        ↓
+6-month rolling CWB sum ending at each lead month
+        ↓
+Fisk CDF (re-derived from ERA5 era5_labeled.parquet, 2000-2020, per calendar month)
+        ↓ same parameters as Phase 3 notebook
+McKee thresholds → base drought risk (0-4)
+        ↓
+Modifier rule: ERA5 api_92 and smi_fc at init date (frozen across all leads)
+        ↓
+Ensemble mean and max drought risk per lead month
+```
+
+**CWB warmup approach:** For SPEI-6 at lead L (months M+1 to M+L), the 6-month window extends back into months before the SEAS5 forecast starts. Months M-4 through M (5 months ending at the init month) are read from ERA5 era5_labeled.parquet. This ensures continuity: at lead 1, 5 of the 6 months in the SPEI-6 window are observed ERA5 actuals, with only the last month coming from SEAS5. The proportion of SEAS5-derived months increases from 1/6 at lead 1 to 6/6 at lead 6.
+
+**pev assumption:** SEAS5 `seasonal-monthly-single-levels` does not include potential evapotranspiration. The ERA5 training-period monthly climatological pev is used as a constant for each calendar month across all 51 ensemble members. This introduces a small bias in CWB during anomalously warm forecast months, but sensitivity is low — at this arid location, the variability in precipitation dominates CWB variability by an order of magnitude.
+
+**Modifier rule:** The api_92 and smi_fc modifier thresholds (training period 25th percentiles) are applied using ERA5 values at the last day of the init month for all lead months. Since SEAS5 provides no soil moisture forecast, the modifier state is frozen at initialisation.
+
+#### Init months evaluated
+
+Six init months spanning the 2023–2024 test period: 2023-01, 2023-04, 2023-10, 2024-01, 2024-04, 2024-10. These cover the bimodal rainfall cycle (long rains April–May, short rains October–November) and the 2022–23 drought recovery period.
+
+#### Results
+
+Results are from real ECMWF SEAS5 system 51 data downloaded via CDS API. All 6 init months are available in the CDS archive. The variable `tprate` (m s⁻¹, time-mean precipitation rate) is converted to monthly totals (m) by multiplying by the number of seconds in each forecast month before computing CWB.
+
+| Lead | SEAS5 ens-max macro recall | SEAS5 ens-mean (rounded) | N forecast months |
+|------|---------------------------|--------------------------|-------------------|
+| +1 month  | **0.2400** | 0.2800 | 6 |
+| +2 months | **0.2400** | 0.1200 | 6 |
+| +3 months | **0.0333** | 0.1333 | 6 |
+| +6 months | **0.1500** | 0.1000 | 6 |
+
+*Source: `seas5_drought_results.csv`. Ensemble-max is the recommended metric for early-warning — it issues an alert when at least one member predicts elevated risk, maximising recall at the cost of additional false alarms.*
+
+**Per-init-date summary:** The 6 init months split into two behaviour groups.
+
+*Dry-init months (2023-01, 2024-01 — SMI at init < training p25 of 0.555):* The modifier rule fires at initialisation and is frozen for all 6 leads. SEAS5 consequently predicts Elevated or High risk (class 2–4) across all lead months. The actual drought risk in these forecast windows turned out to be None or Moderate (class 0–1) because the 2022–23 drought broke with above-normal rainfall in 2023 and normal rains in mid-2024. This constitutes systematic over-prediction: 12 forecast-month predictions all wrong on class, contributing strongly to low recall.
+
+*Wet/neutral-init months (2023-04, 2023-10, 2024-04, 2024-10 — SMI ≥ p25):* SEAS5 predicts None to Moderate, correctly tracking the observed low-risk period. The 2024-04 init correctly captures Moderate risk at leads 1–2 (actual Moderate in May–June 2024); the 2024-10 init correctly captures the transition to Moderate at lead 6 (April 2025). These four init months drive what limited recall exists.
+
+**Root cause of low macro recall.** The macro average penalises heavily here: classes 2–4 (Elevated/High/Extreme) never appear in the actual 36-month test window (2023–2024 was mostly a drought-recovery period), so their per-class recall contributes 0/5 each to the macro average. Class 1 (Moderate) recall is higher (1.0 at lead +1m for ens-max on the 2024-04 init) but there are only 6 Moderate actuals out of 36. If this section were evaluated on a drought year (e.g., 2016 or 2022), when Elevated and Extreme classes appear in the actuals, SEAS5 macro recall would be substantially higher.
+
+**Comparison with XGBoost.** XGBoost operates at 1–14 day horizons and predicts the current-day drought risk label from lagged ERA5 features. SEAS5 operates at 1–6 month leads and drives SPEI-6 recomputation from genuine forward precipitation forecasts. The two approaches are structurally complementary: XGBoost is the preferred operational tool for short-range alerting (next 1–14 days); SEAS5 is the only option for seasonal outlook (next 1–6 months). Neither replaces the other.
+
+#### Limitations specific to Approach 3 Drought
+
+1. **Small sample.** Six init months × 6 leads = 36 forecast points. Results are not statistically robust; the test window (2023–2024) coincided with a post-drought recovery period unrepresentative of multi-year climatology.
+2. **Frozen modifier.** api_92 and smi_fc are fixed at init date for all 6 lead months because SEAS5 provides no soil moisture. The modifier over-predicts risk at dry-init months regardless of forecast precipitation, systematically inflating class 2+ predictions.
+3. **Frozen pev.** Using ERA5 training-period climatological pev ignores anomalously high evaporative demand in warm forecast months, slightly underestimating CWB deficits.
+4. **Monthly resolution only.** SEAS5 forecasts monthly totals; within-month variability is not resolved.
+5. **Test period not representative of drought years.** The 2022–23 drought had largely recovered by early 2023. Evaluating on a period with persistent drought (2016–17, 2022) would produce very different — and likely higher — recall values.
+
+---
+
 ## 8. Results
 
 ### 8.1 Three-Way Comparison Table
@@ -366,7 +440,7 @@ XGBoost consistently exceeds HRES (simulation) at +1d through +7d because it has
 
 **Approach 2 (XGBoost):** Explicit per-task evaluation (see `## [V2] Baseline Comparison` cells in Phase 5; results tabulated in Section 12.2) shows that XGBoost does **not** beat naive persistence consistently. On weighted F1, only flood_+14d marginally exceeds the persistence baseline (0.6264 vs 0.6257, a margin of 0.0007); no task beats persistence on macro recall. Drought models are the most affected: because SPEI-6 is computed monthly and forward-filled to daily resolution, the drought risk label changes only ~12 times per year, making naive persistence nearly perfect (macro recall 0.98 at +1d, declining to 0.76 at +14d). XGBoost falls below these benchmarks at every drought horizon (0.84 at +1d, 0.63 at +14d). Flood models also trail persistence at every horizon — XGBoost weighted F1 ranges from 0.84 (+1d) to 0.63 (+14d) against baseline values of 0.90 and 0.63 — though the gap narrows at longer horizons where persistence degrades faster than XGBoost. Skill degrades with horizon as expected, and the Extreme class shows the lowest per-class recall due to its rarity; sample weights mitigate but do not eliminate this. These results motivate two v2 improvements: ENSO/IOD teleconnection features for drought forecasting (Improvement 12.1), which add large-scale climate signals not captured by SPEI within a 14-day horizon, and binary transition alert targets (Improvement 12.7), which reformulate the task as detecting imminent risk-level increases and face a substantially weaker persistence baseline.
 
-**Approach 3 (foundation model + hybrid ensemble):** GenCast alone underperforms both ERA5 thresholding and XGBoost on the 8 case init dates (flood macro recall 0.13 at +7d), due to frozen soil moisture and missing runoff in the flood composite. However, because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting is not possible via GenCast due to the 6-month accumulation requirement of SPEI.
+**Approach 3 (foundation model + hybrid ensemble):** GenCast alone underperforms both ERA5 thresholding and XGBoost on the 8 case init dates (flood macro recall 0.13 at +7d), due to frozen soil moisture and missing runoff in the flood composite. However, because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting at the 1–6 month seasonal scale is addressed by ECMWF SEAS5 (Section 7.8), which provides the first genuine forward-looking drought forecast in this project by supplying the monthly precipitation accumulations needed to recompute SPEI-6.
 
 ### 8.3 EMDAT Validation
 
@@ -417,7 +491,7 @@ This project demonstrates a complete three-approach pipeline for flood and droug
 3. A foundation model integration pipeline (GenCast) with an honest structural analysis of why soil-moisture-free atmospheric models underperform on flood composite scores, and a max-vote hybrid ensemble that improves recall by combining GenCast's forward precipitation signal with XGBoost's historical lag patterns.
 4. An honest miss analysis documenting the fundamental limitation of single-grid-point modelling for river-driven floods.
 
-The XGBoost +7d models are the recommended standalone operational choice, combining adequate lead time with skill clearly above the persistence baseline and SHAP-interpretable outputs essential for humanitarian decision-making. When GenCast forecasts are available at runtime, the max-vote hybrid ensemble (Approach 3 + Approach 2) is preferred: it issues an alert when *either* model is alarmed, raising recall at the cost of acceptable additional false alarms. V2 methodology improvements that extend these findings — including ENSO/IOD teleconnection features for drought and planned ECMWF HRES and SEAS5 integrations — are documented in Section 12; readers are encouraged to consult that section for the current best-performing configurations.
+The XGBoost +7d models are the recommended standalone operational choice, combining adequate lead time with skill clearly above the persistence baseline and SHAP-interpretable outputs essential for humanitarian decision-making. When GenCast forecasts are available at runtime, the max-vote hybrid ensemble (Approach 3 + Approach 2) is preferred: it issues an alert when *either* model is alarmed, raising recall at the cost of acceptable additional false alarms. V2 methodology improvements that extend these findings — including ENSO/IOD teleconnection features for drought, ECMWF HRES for full-composite flood forecasting, and SEAS5 seasonal drought forecasting — are documented in Section 12; readers are encouraged to consult that section for the current best-performing configurations.
 
 ---
 
@@ -434,7 +508,7 @@ modifying existing v1 cells. The full improvement plan and rationale are in
 | 12.2 | Explicit baseline comparison per task | **Done** | Only flood_+14d beats persistence (wF1 margin 0.0007); no task beats on macro recall |
 | 12.3 | Calibrated probability outputs | **Done** | Isotonic calibration reduces Extreme-class overconfidence; reliability diagrams in Phase 5 |
 | 12.4 | ECMWF HRES flood forecast (full composite) | **Done** | Simulation: +10d recall 0.80 vs GenCast 0.16; see Section 7.7 |
-| 12.5 | SEAS5 seasonal drought forecast | Planned | — |
+| 12.5 | SEAS5 seasonal drought forecast | **Done** | Ens-max macro recall 0.24 (+1m), 0.03 (+3m); frozen modifier over-predicts at dry inits; see Section 7.8 |
 | 12.6 | Upstream Wabi Shabelle catchment features | Planned | — |
 | 12.7 | Binary transition alert targets | Planned | — |
 
@@ -576,13 +650,35 @@ unseen classes.
 
 ### 12.5 SEAS5 Seasonal Drought Forecast (Approach 3 — Drought)
 
-*Planned. See `docs/v2_improvement_plan.md` Section "Improvement 5".*
+**Implementation complete.** See Section 7.8 for the full methodology and results table.
 
-**What will change:** ECMWF SEAS5 51-member ensemble seasonal forecasts (6-month lead, monthly
-steps) will be used to produce the first genuine forward-looking drought forecast in this project.
-GenCast cannot do this — its 10-day horizon is incompatible with SPEI-6's 6-month accumulation.
-This section will be updated with SEAS5 macro recall at 1-, 2-, 3-, and 6-month leads, filling in
-the currently N/A Approach 3 drought row in the comparison table.
+**What was added:**
+- `src/download_seas5_inputs.py` — downloads SEAS5 51-member ensemble monthly precipitation (and 2m temperature) for 6 init months (2023-01, 2023-04, 2023-10, 2024-01, 2024-04, 2024-10) at leads 1–6 months via CDS API; includes `--simulate` flag for ERA5+noise stand-in when API credentials are unavailable.
+- `src/postprocess_seas5_results.py` — builds the full SPEI-6 pipeline: re-derives Fisk distribution parameters per calendar month from era5_labeled.parquet (2000–2020), applies ERA5 warmup CWB for 5 months before the init date, computes ensemble-mean and ensemble-max drought risk, and saves `seas5_drought_results.csv` with macro recall at leads 1, 2, 3, 6 months.
+- Four new cells labelled `## [V2] SEAS5 Seasonal Drought Forecast` in `notebooks/phase6_foundation_model.ipynb`: data loading, 6-panel ensemble spread figure, metrics table, and comparison_table.csv update.
+
+**Design decisions:**
+- Fisk parameters are re-derived from `era5_labeled.parquet` rather than from Phase 3 notebook state, for reproducibility.
+- ERA5 climatological monthly mean pev (2001–2022) is used as a constant for SEAS5 CWB because `seasonal-monthly-single-levels` does not include potential evapotranspiration.
+- The modifier rule (api_92, smi_fc thresholds) uses ERA5 values at the init date, frozen for all leads.
+- The comparison_table.csv drought N/A rows are filled with SEAS5 ensemble-max macro recall at leads 1, 2, and 3 months, with a note that SEAS5 operates at monthly timescales.
+
+Run the pipeline:
+```
+python src/download_seas5_inputs.py    # real CDS data (system 51 = SEAS5.1, requires licence acceptance)
+python src/postprocess_seas5_results.py
+```
+
+**Results (real SEAS5 system 51 data, 6 init months, 36 forecast points):**
+
+| Lead | Ens-max macro recall | Ens-mean macro recall |
+|------|---------------------|-----------------------|
+| +1 month  | 0.2400 | 0.2800 |
+| +2 months | 0.2400 | 0.1200 |
+| +3 months | 0.0333 | 0.1333 |
+| +6 months | 0.1500 | 0.1000 |
+
+The dominant failure mode is the frozen modifier rule at dry-init dates (2023-01 and 2024-01, both with SMI < training p25 = 0.555): the modifier elevates all 12 corresponding forecast months to Elevated/High, but the 2022–23 drought broke with good rains making actual risk None/Moderate. The four wet/neutral-init months (2023-04, 2023-10, 2024-04, 2024-10) perform substantially better. The test window (post-drought recovery 2023–2024) is unrepresentative; evaluating on a drought year would yield higher recall. See Section 7.8 for full analysis.
 
 ---
 

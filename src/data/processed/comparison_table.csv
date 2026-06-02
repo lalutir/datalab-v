@@ -2,11 +2,11 @@ Metric,"Approach 1
 (ERA5 threshold)","Approach 2
 XGBoost","Approach 3
 (Foundation model)"
-Drought macro recall (+1d),0.9821,0.8441,N/A (drought)
-Drought macro recall (+7d),0.8747,0.7535,N/A (drought)
-Drought macro recall (+14d),0.7561,0.6256,N/A (drought)
-Drought Extreme recall (+7d),,0.895,N/A
+Drought macro recall (+1d),0.9821,0.8441,0.2400 (SEAS5 +1m)
+Drought macro recall (+7d),0.8747,0.7535,0.2400 (SEAS5 +2m)
+Drought macro recall (+14d),0.7561,0.6256,0.0333 (SEAS5 +3m)
+Drought Extreme recall (+7d),,0.895,
 Flood macro recall (+1d),0.8112,0.7098,0.5000
 Flood macro recall (+7d),0.4769,0.4213,0.1333
 Flood macro recall (+14d),0.386,0.388,0.1600
-Flood Extreme recall (+7d),,0.286,N/A
+Flood Extreme recall (+7d),,0.286,
