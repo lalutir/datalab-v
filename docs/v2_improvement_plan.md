@@ -653,18 +653,19 @@ document the upstream ERA5 data source. Do not change any other part of the repo
 ## Improvement 7 — Transition-based binary targets `[SKIPPABLE — can do at Africa scale directly]`
 
 ### What
-Add a parallel set of binary target columns: "will flood/drought risk reach Elevated or higher
-at any point within the next N days?" Train four new binary XGBoost models for flood and four
-for drought (one per horizon). Run alongside the existing 5-class models without replacing them.
+Add a parallel set of binary target columns: "will flood/drought risk reach High or Extreme
+(class ≥ 2) at any point within the next N days?" Train four new binary XGBoost models for
+flood and four for drought (one per horizon). Run alongside the existing 4-class models without
+replacing them.
 
 ### Why
-The 5-class persistence baseline is nearly unbeatable for drought (SPEI steps monthly) and
+The 4-class persistence baseline is nearly unbeatable for drought (SPEI steps monthly) and
 competitive for flood at short horizons (risk is autocorrelated). The persistence baseline for
-a binary transition target is much weaker — predicting "Elevated risk within 7 days" requires
-knowing when risk *changes*, not just its current level. A binary model that correctly predicts
-"there is a >50% chance of Elevated or higher flood risk in the next 7 days" is more
-operationally useful than a 5-class risk level, because it maps directly to a go/no-go alert
-decision. EMDAT validation also becomes cleaner: a hit is simply whether the binary model
+a binary transition target is much weaker — predicting "High or Extreme risk within 7 days"
+requires knowing when risk *changes*, not just its current level. A binary model that correctly
+predicts "there is a >50% chance of High or Extreme (class ≥ 2) flood risk in the next 7 days"
+is more operationally useful than a 4-class risk level, because it maps directly to a go/no-go
+alert decision. EMDAT validation also becomes cleaner: a hit is simply whether the binary model
 issued a positive prediction in the 30-day window before a documented event.
 
 ### Files changed
@@ -700,22 +701,23 @@ issued a positive prediction in the 30-day window before a documented event.
      alert=1 at any point in the 30-day window before event start?
    - Save models as `flood_binary_+{n}d.ubj` and `drought_binary_+{n}d.ubj`.
 
-3. Update report Section 4.3 to document the binary targets alongside the 5-class targets.
-   Add a paragraph in Section 8 comparing binary vs 5-class model performance and noting
+3. Update report Section 4.3 to document the binary targets alongside the 4-class targets.
+   Add a paragraph in Section 8 comparing binary vs 4-class model performance and noting
    which is more appropriate for the operational alert use case.
 
 ### Claude Code prompt
 
 ```
 This is a flood/drought risk prediction project at Jijiga, Ethiopia. I have:
-- `src/data/processed/feature_matrix.parquet`: 40 lag features + 8 5-class target columns
-  (flood_risk_t_plus_{1,3,7,14} and drought_risk_t_plus_{1,3,7,14}).
+- `src/data/processed/feature_matrix.parquet`: 40 lag features + 8 4-class target columns
+  (flood_risk_t_plus_{1,3,7,14} and drought_risk_t_plus_{1,3,7,14}). Risk classes are
+  0=Low, 1=Moderate, 2=High, 3=Extreme.
 - 8 existing XGBoost multiclass models in `src/data/processed/xgb_models/`.
 - Train period: 2001–2022. Test period: 2023+.
 
-I want to add a parallel binary classification task: "will flood/drought risk reach Elevated
-(class ≥ 2) at ANY point within the next N days?" This is a transition/alert target that is
-harder for persistence to beat than the level target.
+I want to add a parallel binary classification task: "will flood/drought risk reach High or
+Extreme (class ≥ 2) at ANY point within the next N days?" This is a transition/alert target
+that is harder for persistence to beat than the 4-class level target.
 
 Step 1 — Add to `notebooks/phase4_feature_engineering.ipynb` (new cells only, labeled
 `## [V2] Binary Transition Targets`):
@@ -742,14 +744,17 @@ Step 2 — Add to `notebooks/phase5_xgboost.ipynb` (new cells only, labeled
   * Compare to persistence baseline (binary persistence: predict current_risk >= 2 as alert)
 - EMDAT validation: load `src/data/processed/emdat.xlsx`. For Ethiopian flood events with
   start year 2023–2025: check if flood_binary_+7d predicted alert=1 on any day in the 30-day
-  window before event start. Report hit rate vs v1 5-class model (Elevated+ in same window).
+  window before event start. Report hit rate vs the existing 4-class model (risk ≥ 2 in same window).
 - Save models as `src/data/processed/xgb_models/{hazard}_binary_+{n}d.ubj`.
 
 Step 3 — Update `report/final_report.md`:
 - In Section 4.3 (Forecast Targets), add a paragraph describing the binary alert targets
-  alongside the existing 5-class targets. Include the formula and class balance table.
-- In Section 8.2, add a paragraph comparing binary vs 5-class model results on the test set,
+  alongside the existing 4-class targets. Include the formula and class balance table.
+- In Section 8.2, add a paragraph comparing binary vs 4-class model results on the test set,
   noting which is more operationally useful for a go/no-go alert decision.
+- Fill in Section 12.7 "Binary Transition Alert Targets" with the AUC-ROC results, EMDAT
+  hit rate comparison, and a note on whether binary models beat persistence more convincingly
+  than the 4-class models. Update the "Key result" entry in the Section 12 summary table.
 ```
 
 ---
@@ -791,13 +796,13 @@ each improvement, the scientific motivation, and the result (improvement in metr
 qualitative finding).
 
 The improvements are:
-1. Baseline comparison fix — explicit per-task weighted F1 table
+1. Baseline comparison fix — explicit per-task macro recall and weighted F1 table
 2. ENSO/IOD features — drought XGBoost with Nino3.4 and DMI lag features
 3. Probabilistic output — calibrated class probabilities + reliability diagrams
 4. ECMWF HRES flood forecast — full composite (SMI no longer frozen)
 5. SEAS5 seasonal drought forecast — first genuine forward-looking drought prediction
-6. Upstream Wabi Shabelle catchment features — multi-point flood model
-7. Binary transition targets — alert-framed binary classification
+6. Upstream Wabi Shabelle catchment features — SKIPPED; superseded by HydroSHEDS in Africa Phase 4
+7. Binary transition targets — alert-framed binary classification (class ≥ 2 = High or Extreme)
 
 Add Section 12 with one subsection per improvement. Each subsection should have:
 - What changed (1 sentence)

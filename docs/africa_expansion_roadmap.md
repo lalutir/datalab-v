@@ -5,12 +5,14 @@
 this roadmap — the Africa Phase 6 pipeline directly extends those two scripts. See the
 fast-path table in `docs/v2_improvement_plan.md` for the full dependency summary.
 Improvement 6 (upstream catchment) must be skipped for Africa — it is superseded by
-HydroSHEDS in Phase 4. Improvements 2, 3, and 7 are optional and can be added directly
-at Africa scale without a Jijiga version first.
+HydroSHEDS in Phase 4. Improvements 2 and 3 are optional and can be added directly at
+Africa scale without a Jijiga version first. Improvement 7 (binary transition targets) is
+being implemented at Jijiga scale before starting Africa — the construction logic (rolling
+forward max ≥ 2 over N days) and saved model files carry over directly to Africa Phase 5.
 
 **Scope:** Extend the single-point Jijiga pipeline to produce daily flood and drought risk
-classifications (5-class, same schema as v2) for every ERA5 land grid point across Africa,
-at forecast horizons of +1, +3, +7, and +14 days.
+classifications (4-class, same schema as v2: 0=Low, 1=Moderate, 2=High, 3=Extreme) for every
+ERA5 land grid point across Africa, at forecast horizons of +1, +3, +7, and +14 days.
 
 ---
 
@@ -27,7 +29,7 @@ at forecast horizons of +1, +3, +7, and +14 days.
 | SHAP analysis | Yes — run on representative zone models |
 | HRES flood pipeline | Yes — already global, replaces GenCast after v2 Improvement 4 |
 | SEAS5 drought pipeline | Yes — already global, fills the drought gap GenCast could not address |
-| Binary transition targets | Yes — same construction logic |
+| Binary transition targets | Yes — implemented at Jijiga in Improvement 7; same construction logic (rolling forward max ≥ 2) |
 | EMDAT validation approach | Yes — now has more documented events to validate against |
 
 ## What must be rebuilt
@@ -48,9 +50,9 @@ at forecast horizons of +1, +3, +7, and +14 days.
 ## Infrastructure
 
 ### Storage
-All Africa-scale data lives in Azure Blob Storage. Create two new containers:
-- `era5-africa` — raw ERA5 NetCDF files for the Africa domain
-- `processed-africa` — zarr stores, zone definitions, trained models, output maps
+All Africa-scale data lives in Azure Blob Storage. Two containers are needed:
+- `era5-africa` — raw ERA5 NetCDF files for the Africa domain (**already exists** per current Azure setup)
+- `processed-africa` — zarr stores, zone definitions, trained models, output maps (create if absent)
 
 ### Compute — CPU work
 Use an **Azure D16s_v4** (16 vCPUs, 64 GB RAM, ~€0.65/hr). This is a standard CPU VM with
@@ -210,9 +212,10 @@ The index formulas are identical to the single-point Jijiga pipeline, just vecto
   (scipy.stats.fisk) per grid point per calendar month on 2000–2020 reference period,
   transform to standard normal, forward-fill to daily.
 
-Drought risk labels (McKee thresholds — universal):
-SPEI >= -0.5 → 0, -1.0 to -0.5 → 1, -1.5 to -1.0 → 2, -2.0 to -1.5 → 3, < -2.0 → 4
-Modifier: if base ∈ {1,2,3} AND (API < zone training p25 OR SMI < zone training p25) → +1
+Drought risk labels (McKee thresholds — universal, 4 classes):
+SPEI >= -0.5 → 0, -1.0 to -0.5 → 1, -1.5 to -1.0 → 2, < -1.5 → 3
+Modifier: if base ∈ {1,2} AND (API < zone training p25 OR SMI < zone training p25) → +1
+(modifier does not apply to Low (0) or Extreme (3))
 
 Flood risk labels (percentile thresholds from zone_parameters):
 flood_score = 0.40*norm_API + 0.35*norm_SMI + 0.25*norm_total_ro
@@ -315,9 +318,12 @@ but applied across all grid points in the zone simultaneously — rows from all 
 in all years ≤ fold train cutoff form the training set.
 
 ### Evaluation
-Primary metric: weighted F1 on 2023–2025 test period, aggregated across all grid points in
-zone. Also report per-country EMDAT hit rate for each zone (EMDAT events in that zone's
-geography vs zone model's detection rate in ±30d window).
+Primary metric: **macro recall** on 2023–2025 test period, aggregated across all grid points
+in zone (weighted F1 is not used — the dominant Low class inflates the score and masks hazard
+detection failure, identical reason to the Jijiga pipeline). Also report Extreme-class recall
+separately, and per-country EMDAT hit rate for each zone (EMDAT events in that zone's
+geography vs zone model's detection rate in ±30d window). Always use `average='macro',
+zero_division=0, labels=range(4)` in all recall computations.
 
 ### Claude Code prompt
 
@@ -336,16 +342,24 @@ For each zone_id in range(20):
   
   For each of 8 tasks (flood/drought × +1d/+3d/+7d/+14d):
     Walk-forward CV with same 3 folds as v2 (cutoff years 2014, 2016, 2018).
-    Class weights: total_samples / (5 × class_count), computed within training fold only.
+    Class weights: total_samples / (4 × class_count), computed within training fold only.
     Hyperparameter search: max_depth [4,6], learning_rate [0.05, 0.1], n_estimators [300, 500].
     Select best hyperparameters by mean weighted F1 across folds.
     Refit on full zone training set (2001–2022).
     Evaluate on zone test set (2023+): weighted F1 and Extreme-class recall.
     Save model as `src/data/processed/models_africa/zone_{zone_id}_{hazard}_+{n}d.ubj`.
 
-Print a summary table: zone_id | n_gridpoints | flood_+7d_F1 | drought_+7d_F1 | beats_persistence.
+Print a summary table: zone_id | n_gridpoints | flood_+7d_macro_recall | drought_+7d_macro_recall | flood_+7d_binary_AUC | beats_persistence.
 Run SHAP TreeExplainer on zone model with most grid points (likely tropical central Africa)
 for flood_+7d and drought_+7d. Save SHAP bar plots to docs/figures/.
+
+Also train binary alert models per zone (extending v2 Improvement 7):
+For each zone and each of 8 tasks, construct binary targets:
+  {hazard}_alert_t_plus_n = 1 if max({hazard}_risk[t+1..t+n]) >= 2 else 0
+Train XGBClassifier(objective='binary:logistic', scale_pos_weight=count_neg/count_pos).
+Same walk-forward CV folds and hyperparameter grid as the multiclass models.
+Evaluate with AUC-ROC on 2023–2025 test set. Add AUC to the summary table.
+Save binary models as `zone_{zone_id}_{hazard}_binary_+{n}d.ubj`.
 
 Also run EMDAT validation:
 Load src/data/processed/emdat.xlsx. Filter to Africa, 2023–2025.
@@ -368,17 +382,16 @@ HRES is global at 0.1°. Regrid to 1° (conservative remapping) to match the ERA
 grid. The full flood composite (API + SMI + total\_ro) can now be computed at every Africa
 grid point because HRES outputs soil moisture.
 
-**Archive constraint:** The ECMWF open-data rolling archive covers only ~6 months. Any
-init dates from 2023–2024 will return HTTP 404 — the same limitation discovered at Jijiga
-scale. Two tracks apply here:
+**Archive constraint:** The ECMWF open-data rolling archive covers approximately ~2 years.
+As of mid-2026, 2023 init dates return HTTP 404 but 2024 init dates are downloadable — the
+same limitation characterised at Jijiga scale (Section 12.4 of the report). Two tracks apply:
 
-- **Historical validation (2023–2024 init dates):** Use the simulation approach from v2
+- **Historical validation (2023 init dates):** Use the simulation approach from v2
   (`download_hres_inputs.py --simulate`), extended to the Africa domain. ERA5 actuals +
   lead-scaled Gaussian noise gives an approximate upper bound on real HRES performance
   and is consistent with how Jijiga-scale results were generated.
-- **Operational use (init dates within last ~6 months):** Real HRES data is available and
-  no simulation is needed. As the project moves toward operational deployment, this becomes
-  the primary path.
+- **Recent init dates (2024 and later):** Real HRES data is available and no simulation is
+  needed. As the project moves toward operational deployment, this becomes the primary path.
 
 Choose ~20 init dates covering Africa's main rainy season onsets and dry-wet transitions
 in 2023–2024 for historical validation (simulation track), plus whichever current-date
@@ -403,14 +416,14 @@ Zone data: `src/data/processed/africa_zones.parquet` (lon, lat, zone_id)
 Zone parameters: `src/data/processed/zone_parameters.json` (per-zone k, FC, flood thresholds)
 Per-point SPEI log-logistic parameters: saved in Phase 3 as a JSON or zarr attributes.
 
-IMPORTANT — HRES archive constraint: The ECMWF open-data rolling archive covers only ~6
-months. Any historical init dates (2023–2024) will return HTTP 404. Before calling
-`postprocess_hres_africa.py`, input files must be created by one of:
-  a) Real download (init dates within last ~6 months): extend `download_hres_inputs.py`
+IMPORTANT — HRES archive constraint: The ECMWF open-data rolling archive covers ~2 years.
+As of mid-2026, 2023 init dates return HTTP 404 but 2024 init dates are downloadable.
+Before calling `postprocess_hres_africa.py`, input files must be created by one of:
+  a) Real download (2024 and later init dates): extend `download_hres_inputs.py`
      to download the Africa domain GRIB (lon -18 to 52, lat -35 to 38) and save per init
      date as `src/data/processed/hres_africa_{init_date}.nc` with dims (date, lat, lon).
      Regrid from HRES 0.1° to 1° using conservative area-weighted averaging (xesmf).
-  b) Simulation (all historical init dates): write `download_hres_africa_simulate.py`
+  b) Simulation (2023 init dates and any dates outside the ~2-year rolling window): write `download_hres_africa_simulate.py`
      that reads era5_africa_labeled.zarr for the 10 forecast days after each init date,
      adds lead-scaled Gaussian noise (same noise model as `download_hres_inputs.py
      --simulate`: multiplicative log-normal for tp/sro/ssro σ=0.12–0.20×√lead; additive
