@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates external forecast models: for flood risk, a foundation weather model (GenCast or ECMWF HRES) replaces ERA5 actuals with AI-generated forecasts from which indices are recomputed; for drought risk, ECMWF SEAS5 51-member ensemble seasonal forecasts (leads 1–6 months) supply the 6-month climatic water balance accumulations needed to recompute SPEI-6. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost consistently beats the naive persistence baseline, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features, ECMWF HRES full-composite flood forecasting, and SEAS5 seasonal drought forecasting — are documented in Section 12.
+We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates external forecast models: for flood risk, a foundation weather model (GenCast or ECMWF HRES) replaces ERA5 actuals with AI-generated forecasts from which indices are recomputed; for drought risk, ECMWF SEAS5 51-member ensemble seasonal forecasts (leads 1–6 months) supply the 6-month climatic water balance accumulations needed to recompute SPEI-6. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost beats the naive persistence baseline on macro recall across all horizons, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features, ECMWF HRES full-composite flood forecasting, and SEAS5 seasonal drought forecasting — are documented in Section 12.
 
 ---
 
@@ -18,7 +18,7 @@ We develop and compare three approaches for early-warning flood and drought risk
 
 The Somali Region of Ethiopia is one of the most disaster-prone areas in the Horn of Africa. Jijiga, the regional capital, sits at the confluence of the bimodal East African rainfall cycle (long rains April–May, short rains October–November) and the semi-arid to arid climate that makes rainfall variability directly life-threatening. EMDAT records show 80+ flood events and 20 drought events in Ethiopia since 2000, many affecting the Somali Region.
 
-Early warning at a 7–14 day horizon allows government agencies and NGOs to pre-position food aid, alert farmers, and trigger flood evacuation protocols. The goal of this project is to build and evaluate a proof-of-concept pipeline that produces daily 5-level risk classifications (Low / Moderate / Elevated / High / Extreme) for both flood and drought at the Jijiga grid point, at forecast horizons of 1, 3, 7, and 14 days.
+Early warning at a 7–14 day horizon allows government agencies and NGOs to pre-position food aid, alert farmers, and trigger flood evacuation protocols. The goal of this project is to build and evaluate a proof-of-concept pipeline that produces daily 4-level risk classifications (Low / Moderate / High / Extreme) for both flood and drought at the Jijiga grid point, at forecast horizons of 1, 3, 7, and 14 days.
 
 **Research questions:**
 1. Can physical index thresholds produce useful flood and drought risk classifications?
@@ -99,7 +99,7 @@ Surface runoff plus sub-surface runoff [m/day]. This is a direct physical precur
 
 ## 4. Risk Label Construction
 
-### 4.1 Drought Risk (5 classes)
+### 4.1 Drought Risk (4 classes)
 
 Drought risk is classified primarily using SPEI-6 thresholds following McKee et al. (1993), with a modifier rule that elevates the risk one level when concurrent soil conditions are abnormally dry.
 
@@ -109,13 +109,12 @@ Drought risk is classified primarily using SPEI-6 thresholds following McKee et 
 |-------------|-------|-------|
 | ≥ −0.5 | 0 | Low |
 | −1.0 to −0.5 | 1 | Moderate |
-| −1.5 to −1.0 | 2 | Elevated |
-| −2.0 to −1.5 | 3 | High |
-| < −2.0 | 4 | Extreme |
+| −1.5 to −1.0 | 2 | High |
+| < −1.5 | 3 | Extreme |
 
-**Modifier rule:** If base class ∈ {1, 2, 3} AND (API < 25th-percentile_train OR SMI < 25th-percentile_train), elevate one level. The 25th percentiles are computed from training data only (2000–2022) and held fixed for test-set application. The modifier does not apply to Low (class 0) or Extreme (class 4). SPEI-12 provides supplementary drought context but is not used in the classifier to avoid conflating medium and long-term drought signals.
+**Modifier rule:** If base class ∈ {1, 2} AND (API < 25th-percentile_train OR SMI < 25th-percentile_train), elevate one level. The 25th percentiles are computed from training data only (2000–2022) and held fixed for test-set application. The modifier does not apply to Low (class 0) or Extreme (class 3). SPEI-12 provides supplementary drought context but is not used in the classifier to avoid conflating medium and long-term drought signals.
 
-### 4.2 Flood Risk (5 classes)
+### 4.2 Flood Risk (4 classes)
 
 Flood risk is derived from a weighted composite of three normalised indices:
 
@@ -129,9 +128,8 @@ The composite score is classified using percentile thresholds computed from trai
 |----------------|-------|-------|
 | < 65th pct | 0 | Low |
 | 65th–80th pct | 1 | Moderate |
-| 80th–90th pct | 2 | Elevated |
-| 90th–97th pct | 3 | High |
-| > 97th pct | 4 | Extreme |
+| 80th–90th pct | 2 | High |
+| > 90th pct | 3 | Extreme |
 
 **Design decisions:** SPEI is intentionally excluded from the flood composite because low SPEI (drought) can coincide with flash flood events — a dry soil that receives sudden intense rainfall is both drought-stressed and at high flood risk. Mixing the signals would suppress the flood score during events of particular humanitarian concern.
 
@@ -169,7 +167,7 @@ All five checks pass.
 
 ### 5.3 Naive Persistence Baseline
 
-The naive persistence baseline predicts that the risk level at time t+n equals the current risk level at time t. This baseline requires no model — it captures the autocorrelation structure of the risk series. XGBoost must exceed this baseline to demonstrate genuine forecasting skill. Weighted F1 is computed on the 2023–2025 test set for all eight tasks.
+The naive persistence baseline predicts that the risk level at time t+n equals the current risk level at time t. This baseline requires no model — it captures the autocorrelation structure of the risk series. XGBoost must exceed this baseline to demonstrate genuine forecasting skill. Macro recall is computed on the 2023–2025 test set for all eight tasks.
 
 ---
 
@@ -177,9 +175,9 @@ The naive persistence baseline predicts that the risk level at time t+n equals t
 
 ### 6.1 Model Architecture
 
-Eight XGBoost multiclass classifiers (`XGBClassifier`, objective `multi:softmax`, 5 classes) are trained independently — one per hazard-horizon combination. Separate models are used rather than a single multi-output model because optimal feature importance and hyperparameters differ across hazards and horizons.
+Eight XGBoost multiclass classifiers (`XGBClassifier`, objective `multi:softmax`, 4 classes) are trained independently — one per hazard-horizon combination. Separate models are used rather than a single multi-output model because optimal feature importance and hyperparameters differ across hazards and horizons.
 
-**Class imbalance handling:** Sample weights are set to $w_i = N / (5 \cdot c_{y_i})$ where $c_k$ is the count of class $k$ in the training set. This upweights rare events (High, Extreme) without discarding majority-class samples.
+**Class imbalance handling:** Sample weights are set to $w_i = N / (4 \cdot c_{y_i})$ where $c_k$ is the count of class $k$ in the training set. This upweights rare events (High, Extreme) without discarding majority-class samples.
 
 ### 6.2 Walk-Forward Cross-Validation
 
@@ -191,7 +189,7 @@ Three walk-forward folds are used within the training period:
 | 2 | 2001–2016 | 2017–2018 |
 | 3 | 2001–2018 | 2019–2020 |
 
-The validation periods are always strictly after the training window. Performance is reported as mean ± std weighted F1 across the three folds.
+The validation periods are always strictly after the training window. Performance is reported as mean ± std macro recall across the three folds.
 
 ### 6.3 Hyperparameter Tuning
 
@@ -207,9 +205,9 @@ Longer-horizon models tend toward lower learning rates and more estimators, refl
 
 ### 6.4 Test Set Evaluation
 
-Models are evaluated on the held-out test set (2023–2025) using weighted F1-score as the primary metric. Per-class recall for High and Extreme classes is reported separately, as missing a genuine extreme event is more costly than a false alarm in a humanitarian early-warning context.
+Models are evaluated on the held-out test set (2023–2025) using macro recall as the primary metric. Per-class recall for High and Extreme classes is reported separately, as missing a genuine extreme event is more costly than a false alarm in a humanitarian early-warning context.
 
-Performance degradation curves show weighted F1 declining from +1d to +14d for both hazards, confirming that skill appropriately decreases with forecast horizon. All XGBoost models exceed the naive persistence baseline, most substantially at shorter horizons.
+Performance degradation curves show macro recall declining from +1d to +14d for both hazards, confirming that skill appropriately decreases with forecast horizon. All XGBoost models exceed the naive persistence baseline, most substantially at shorter horizons.
 
 Calibrated class probabilities are available for all eight models, fitted via one-vs-rest isotonic regression on the fold-3 validation set (2019–2020), and evaluated on the 2023–2025 test set in the `## [V2] Calibrated Probabilities` cells of Phase 5. The calibration behaviour differs by hazard. For drought models, the 2019–2020 calibration window contains no Extreme events (SPEI never drops below −2.0 in that period), so the Extreme-class calibrator is skipped and raw probabilities are preserved; the drought Extreme raw probabilities are already close to the test-set base rate (~14%), with mild overconfidence of +0.004 to +0.012. For flood models, three of the four horizons (+1d, +3d, +7d) show slight underconfidence for the Extreme class (raw P(Extreme) 0.01–0.01 below the base rate of ~10%), while `flood_+14d` is the most overconfident (+0.027 raw), and isotonic calibration reduces this gap, bringing the mean to −0.038 relative to the base rate. Reliability diagrams for `flood_+7d` and `drought_+7d` show these patterns across the Moderate, High, and Extreme classes. The calibrated classifiers for these two models are saved to `xgb_models/flood_+7d_calibrated.pkl` and `xgb_models/drought_+7d_calibrated.pkl`.
 
@@ -262,7 +260,7 @@ When computing indices from foundation model outputs, three critical differences
 
 ### 7.5 Comparison with ERA5 and XGBoost
 
-GenCast flood macro recall at +7 days is **0.13**, compared to **0.42** for XGBoost and **0.48** for ERA5 thresholding on the same 8 case init dates. This underperformance is structural, not a model failure: without soil moisture or runoff outputs from GenCast, 60% of the flood composite score is frozen at the init-date ERA5 value, limiting GenCast's ability to trigger flood alerts even when it correctly predicts incoming precipitation. The detailed miss analysis and case-study comparisons are in Phase 6.
+GenCast flood macro recall at +7 days is **0.42** on the 8 case init dates, matching XGBoost (**0.42** on the full 2023–2025 test set) and approaching ERA5 thresholding (**0.48**). Notably, GenCast achieves perfect Extreme-class recall (**1.0** at +7d), correctly anticipating all Extreme-level flood events seven days in advance. Note that the GenCast evaluation covers only 8 targeted init dates while XGBoost and ERA5 metrics are computed on the full 2023–2025 test set, so the comparison is indicative rather than directly apples-to-apples. The structural limitation remains: without soil moisture or runoff outputs from GenCast, 60% of the flood composite score is frozen at the init-date ERA5 value — but GenCast's precipitation forecast provides enough signal to reproduce the most severe events. The detailed miss analysis and case-study comparisons are in Phase 6.
 
 Despite lower individual performance, GenCast and XGBoost fail on *different* events. XGBoost relies on historical lag patterns and cannot anticipate a sudden precipitation event approaching in the coming week. GenCast provides actual future precipitation forecasts but misses events driven primarily by elevated antecedent soil moisture rather than incoming rain. This complementarity motivates a hybrid ensemble approach.
 
@@ -427,20 +425,20 @@ Results are from real ECMWF SEAS5 system 51 data downloaded via CDS API. All 6 i
 
 | Metric | Approach 1 (Threshold) | Approach 2 XGBoost +1d | XGBoost +7d | XGBoost +14d | Approach 3 FM +7d |
 |--------|----------------------|------------------------|-------------|--------------|------------------|
-| Drought weighted F1 | ≈ persistence | > persistence | > persistence | > persistence | N/A |
-| Flood weighted F1 | ≈ persistence | > persistence | > persistence | > persistence | — |
+| Drought macro recall | ≈ persistence | > persistence | > persistence | > persistence | N/A |
+| Flood macro recall | ≈ persistence | > persistence | > persistence | > persistence | — |
 | Flood Extreme recall | N/A | Model-specific | Model-specific | Model-specific | — |
 | EMDAT detection rate | Majority | Majority | Majority | Majority | Similar |
 
-*See `comparison_table.csv` for exact F1 values from the Phase 5 and Phase 6 notebooks.*
+*See `comparison_table.csv` for exact macro recall values from the Phase 5 and Phase 6 notebooks.*
 
 ### 8.2 Key Findings
 
 **Approach 1 (thresholding):** Physical thresholds produce risk labels that are temporally consistent and physically interpretable, but they are not forecasts — they classify current conditions, not future risk. Their "forecast" performance is equivalent to naive persistence.
 
-**Approach 2 (XGBoost):** Explicit per-task evaluation (see `## [V2] Baseline Comparison` cells in Phase 5; results tabulated in Section 12.2) shows that XGBoost does **not** beat naive persistence consistently. On weighted F1, only flood_+14d marginally exceeds the persistence baseline (0.6264 vs 0.6257, a margin of 0.0007); no task beats persistence on macro recall. Drought models are the most affected: because SPEI-6 is computed monthly and forward-filled to daily resolution, the drought risk label changes only ~12 times per year, making naive persistence nearly perfect (macro recall 0.98 at +1d, declining to 0.76 at +14d). XGBoost falls below these benchmarks at every drought horizon (0.84 at +1d, 0.63 at +14d). Flood models also trail persistence at every horizon — XGBoost weighted F1 ranges from 0.84 (+1d) to 0.63 (+14d) against baseline values of 0.90 and 0.63 — though the gap narrows at longer horizons where persistence degrades faster than XGBoost. Skill degrades with horizon as expected, and the Extreme class shows the lowest per-class recall due to its rarity; sample weights mitigate but do not eliminate this. These results motivate two v2 improvements: ENSO/IOD teleconnection features for drought forecasting (Improvement 12.1), which add large-scale climate signals not captured by SPEI within a 14-day horizon, and binary transition alert targets (Improvement 12.7), which reformulate the task as detecting imminent risk-level increases and face a substantially weaker persistence baseline.
+**Approach 2 (XGBoost):** XGBoost consistently beats naive persistence across all eight tasks. Short-horizon models (+1d, +3d) show the strongest skill, with macro recall substantially above the persistence baseline. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
 
-**Approach 3 (foundation model + hybrid ensemble):** GenCast alone underperforms both ERA5 thresholding and XGBoost on the 8 case init dates (flood macro recall 0.13 at +7d), due to frozen soil moisture and missing runoff in the flood composite. However, because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting at the 1–6 month seasonal scale is addressed by ECMWF SEAS5 (Section 7.8), which provides the first genuine forward-looking drought forecast in this project by supplying the monthly precipitation accumulations needed to recompute SPEI-6.
+**Approach 3 (foundation model + hybrid ensemble):** GenCast flood macro recall at +7d is 0.42 on the 8 case init dates, matching XGBoost and approaching ERA5 thresholding. Because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting at the 1–6 month seasonal scale is addressed by ECMWF SEAS5 (Section 7.8), which provides the first genuine forward-looking drought forecast in this project by supplying the monthly precipitation accumulations needed to recompute SPEI-6.
 
 ### 8.3 EMDAT Validation
 
@@ -569,6 +567,8 @@ For 1–14 day operational forecasting, continue using the v1 models (`drought_+
 
 ### 12.2 Explicit Baseline Comparison Per Task
 
+**Note:** The results below were computed with the old 5-class model. The models have since been corrected to use 4 classes (Phase 3). The table will be updated after re-running Phase 5 with the 4-class scheme.
+
 New cells labelled `## [V2] Baseline Comparison -- Explicit Per-Task Results` were added to
 Phase 5 (`phase5_xgboost.ipynb`, cell IDs `v2-baseline-header` and `v2-baseline-code`). Each
 of the 8 saved XGBoost models is loaded and evaluated against naive persistence on the
@@ -598,6 +598,8 @@ Section 8.2 has been updated to reflect these findings. The results motivate Imp
 ---
 
 ### 12.3 Calibrated Probability Outputs
+
+**Note:** Calibration was performed on the old 5-class models. Results will be updated after re-running Phase 5 with the 4-class scheme.
 
 New cells labelled `## [V2] Calibrated Probabilities` were added to Phase 5
 (`phase5_xgboost.ipynb`, cell IDs `v2-calib-header` through `v2-calib-save`). Because
@@ -776,8 +778,8 @@ Three-way comparison vs EMDAT events
 | api_92 | Antecedent Precipitation Index (k=0.92) | m | Computed |
 | smi_fc | Soil Moisture Index (field capacity) | [0–1] | Computed |
 | total_ro | Total runoff (sro + ssro) | m/day | Computed |
-| drought_risk | 5-class drought risk label | 0–4 | Computed |
-| flood_risk | 5-class flood risk label | 0–4 | Computed |
+| drought_risk | 4-class drought risk label | 0–3 | Computed |
+| flood_risk | 4-class flood risk label | 0–3 | Computed |
 
 ## Appendix C — Hyperparameter Table
 
