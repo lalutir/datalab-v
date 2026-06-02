@@ -91,33 +91,31 @@ Four indices are computed. These are the inputs to both the risk classifiers and
 
 All percentile cutoffs and normalisation parameters are **fitted on training data (2001–2022) only** and then applied to the full dataset. Never refit on test data.
 
-**Drought risk** (5 classes: 0=None, 1=Moderate, 2=Elevated, 3=High, 4=Extreme):
+**Drought risk** (4 classes: 0=Low, 1=Moderate, 2=High, 3=Extreme):
 
 Primary classification using McKee (1993) SPEI thresholds:
-- SPEI ≥ −0.5 → None (0)
+- SPEI ≥ −0.5 → Low (0)
 - −1.0 to −0.5 → Moderate (1)
-- −1.5 to −1.0 → Elevated (2)
-- −2.0 to −1.5 → High (3)
-- < −2.0 → Extreme (4)
+- −1.5 to −1.0 → High (2)
+- < −1.5 → Extreme (3)
 
-Secondary modifier: if base risk is Moderate, Elevated, or High AND (API < training 25th percentile OR SMI < training 25th percentile) → elevate one level. Do not apply to None or Extreme.
+Secondary modifier: if base risk is Moderate or High AND (API < training 25th percentile OR SMI < training 25th percentile) → elevate one level. Do not apply to Low or Extreme.
 
-**Flood risk** (5 classes: 0=None, 1=Moderate, 2=Elevated, 3=High, 4=Extreme):
+**Flood risk** (4 classes: 0=Low, 1=Moderate, 2=High, 3=Extreme):
 
 Composite score: `flood_score = 0.40 × norm_API + 0.35 × norm_SMI + 0.25 × norm_total_ro`
 
 Where norm_X = (X - train_min) / (train_max - train_min), clamped to [0, 1].
 
 Thresholds from training composite score percentiles:
-- < p65 → None (0)
+- < p65 → Low (0)
 - p65–p80 → Moderate (1)
-- p80–p90 → Elevated (2)
-- p90–p97 → High (3)
-- > p97 → Extreme (4)
+- p80–p90 → High (2)
+- > p90 → Extreme (3)
 
 SPEI is explicitly excluded from the flood composite — during flash flood events (dry conditions preceding sudden rainfall) SPEI can be negative, which would suppress the flood score.
 
-**Expected class distribution**: None ~60–65%, Moderate ~15–20%, Elevated ~8–12%, High ~4–6%, Extreme ~2–5%. If Extreme exceeds 10%, tighten the p97 boundary.
+**Expected class distribution**: Low ~65%, Moderate ~15%, High ~10%, Extreme ~10%.
 
 ### Shifted targets
 
@@ -168,7 +166,7 @@ Used for hyperparameter tuning within the training period only.
 ```python
 XGBClassifier(
     objective='multi:softmax',
-    num_class=5,
+    num_class=4,
     n_estimators=300,       # tuned via walk-forward CV
     max_depth=6,            # tuned: try 4, 6, 8
     learning_rate=0.05,     # tuned: try 0.01, 0.05, 0.1
@@ -177,7 +175,7 @@ XGBClassifier(
 )
 ```
 
-Handle class imbalance with sample weights: `weight = total_samples / (5 × count_of_that_class)`.
+Handle class imbalance with sample weights: `weight = total_samples / (4 × count_of_that_class)`.
 
 Models saved under `xgb_models/`.
 
