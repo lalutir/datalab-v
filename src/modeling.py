@@ -70,11 +70,11 @@ class RiskLevel(Enum):
     level to an integer in [0, 4] suitable for plotting or arithmetic.
     """
 
-    LOW = "Laag risico"
-    MODERATE = "Gemiddeld risico"
-    ELEVATED = "Verhoogd risico"
-    HIGH = "Hoog risico"
-    EXTREME = "Extreem risico"
+    LOW = "Low risk"
+    MODERATE = "Moderate risk"
+    ELEVATED = "Elevated risk"
+    HIGH = "High risk"
+    EXTREME = "Extreme risk"
 
     @property
     def numeric(self) -> int:
