@@ -89,7 +89,7 @@ Four indices are computed. These are the inputs to both the risk classifiers and
 - Provides a direct normalised measure of root-zone soil moisture independent of precipitation history
 
 **total_ro** (total runoff):
-- `total_ro = sro + lsp` (surface runoff + large-scale precipitation as subsurface proxy)
+- `total_ro = sro + ssro` (surface runoff + sub-surface runoff)
 - Near-zero at this arid grid point for most of the year — limits flood model sensitivity to upstream Wabi Shabelle dynamics
 
 ### Risk label construction
@@ -168,23 +168,23 @@ Used for hyperparameter tuning within the training period only.
 
 8 separate multiclass classifiers — one per hazard × horizon combination. Separate models per task because optimal feature weights differ across horizons (lag_1 dominates at +1 day; lag_365 gains importance at +14 days).
 
-```python
-XGBClassifier(
-    objective='multi:softmax',
-    num_class=4,
-    n_estimators=300,       # tuned via walk-forward CV
-    max_depth=6,            # tuned: try 4, 6, 8
-    learning_rate=0.05,     # tuned: try 0.01, 0.05, 0.1
-    subsample=0.8,
-    colsample_bytree=0.8,
-)
-```
+Five hyperparameter combinations are searched via walk-forward CV (selection criterion: mean macro recall):
+
+| # | max_depth | learning_rate | n_estimators |
+|---|-----------|--------------|--------------|
+| 1 | 4 | 0.05 | 300 |
+| 2 | 6 | 0.05 | 300 |
+| 3 | 6 | 0.01 | 500 |
+| 4 | 8 | 0.05 | 200 |
+| 5 | 4 | 0.10 | 200 |
+
+Other fixed params: `objective='multi:softmax'`, `num_class=4`, `eval_metric='mlogloss'`, `random_state=42`. The best combination is refit on the full 2001–2022 training set.
 
 Handle class imbalance with sample weights: `weight = total_samples / (4 × count_of_that_class)`.
 
 Models saved under `xgb_models/`.
 
-**Naive persistence baseline**: for horizon +n, predict risk(t+n) = risk(t). XGBoost must beat this baseline on macro recall to demonstrate it adds value. If it does not beat the baseline on any task, that model adds no value and should be investigated.
+**Naive persistence baseline**: for horizon +n, predict risk(t+n) = risk(t). **Known result (Phase 5):** no 4-class XGBoost model beats this baseline on macro recall at any horizon. Drought persistence is near-perfect because SPEI-6 changes only ~12 times per year (monthly, forward-filled to daily); flood persistence is strong due to multi-day event clustering. The only margin over persistence is `flood_+14d` on weighted F1 (+0.0007). The binary alert models (Phase 5 V2) do beat persistence: all four flood binary classifiers exceed persistence on AUC-ROC (+0.035 to +0.152, widening with horizon). Use binary models for go/no-go alerting; use 4-class models for severity characterisation once an alert fires.
 
 **SHAP analysis**: use `shap.TreeExplainer`. Expected pattern — at +1 day: lag_1 features dominate. At +14 days: lag_365 and lag_14 gain relative importance. Flood models: API and tp lags should rank high. Drought models: SPEI and t2m lags should rank high. SHAP findings are a key scientific output of the project.
 

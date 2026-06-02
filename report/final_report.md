@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates external forecast models: for flood risk, a foundation weather model (GenCast or ECMWF HRES) replaces ERA5 actuals with AI-generated forecasts from which indices are recomputed; for drought risk, ECMWF SEAS5 51-member ensemble seasonal forecasts (leads 1–6 months) supply the 6-month climatic water balance accumulations needed to recompute SPEI-6. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost beats the naive persistence baseline on macro recall across all horizons, with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features, ECMWF HRES full-composite flood forecasting, and SEAS5 seasonal drought forecasting — are documented in Section 12.
+We develop and compare three approaches for early-warning flood and drought risk prediction at Jijiga, Ethiopia, using daily ERA5 reanalysis data. Approach 1 applies direct physical thresholds to four climate indices (SPEI-6/12, API, SMI, total runoff). Approach 2 trains eight XGBoost multiclass classifiers (two hazards × four forecast horizons of +1/+3/+7/+14 days) with walk-forward cross-validation. Approach 3 integrates external forecast models: for flood risk, a foundation weather model (GenCast or ECMWF HRES) replaces ERA5 actuals with AI-generated forecasts from which indices are recomputed; for drought risk, ECMWF SEAS5 51-member ensemble seasonal forecasts (leads 1–6 months) supply the 6-month climatic water balance accumulations needed to recompute SPEI-6. We validate all three approaches against EMDAT disaster records and demonstrate that XGBoost adds forecasting skill over naive persistence — most clearly on the binary transition alert formulation, where all four flood horizons beat persistence on AUC-ROC — with SHAP analysis revealing physically interpretable feature importance that degrades appropriately from short to long horizons. V2 methodology improvements — including ENSO/IOD teleconnection features, ECMWF HRES full-composite flood forecasting, and SEAS5 seasonal drought forecasting — are documented in Section 12.
 
 ---
 
@@ -212,13 +212,15 @@ The validation periods are always strictly after the training window. Performanc
 
 ### 6.3 Hyperparameter Tuning
 
-Grid search over five hyperparameter combinations is performed for each of the eight models, selecting the combination with highest mean validation F1. The final model is then refit on the complete training set (2001–2022) using the selected hyperparameters.
+Five hyperparameter combinations are searched for each of the eight models using walk-forward CV, selecting the combination with the highest mean validation macro recall. The final model is then refit on the complete training set (2001–2022) using the selected hyperparameters.
 
-| Parameter | Search values |
-|-----------|--------------|
-| max_depth | 4, 6, 8 |
-| learning_rate | 0.01, 0.05, 0.10 |
-| n_estimators | 200, 300, 500 |
+| # | max_depth | learning_rate | n_estimators |
+|---|-----------|--------------|--------------|
+| 1 | 4 | 0.05 | 300 |
+| 2 | 6 | 0.05 | 300 |
+| 3 | 6 | 0.01 | 500 |
+| 4 | 8 | 0.05 | 200 |
+| 5 | 4 | 0.10 | 200 |
 
 Longer-horizon models tend toward lower learning rates and more estimators, reflecting that the relationship between lag features and distant future risk is smoother and requires more regularisation.
 
@@ -455,7 +457,7 @@ Results are from real ECMWF SEAS5 system 51 data downloaded via CDS API. All 6 i
 
 **Approach 1 (thresholding):** Physical thresholds produce risk labels that are temporally consistent and physically interpretable, but they are not forecasts — they classify current conditions, not future risk. Their "forecast" performance is equivalent to naive persistence.
 
-**Approach 2 (XGBoost):** XGBoost consistently beats naive persistence across all eight tasks. Short-horizon models (+1d, +3d) show the strongest skill, with macro recall substantially above the persistence baseline. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
+**Approach 2 (XGBoost):** On the 4-class task, no XGBoost model beats naive persistence on macro recall (see Section 12.2); drought persistence is near-perfect because SPEI-6 changes only ~12 times per year, and flood persistence is strong due to multi-day event clustering. The only margin over persistence is flood_+14d on weighted F1 (+0.0007). However, the binary transition alert formulation (Section 12.7) reveals genuine anticipatory skill: all four flood binary models beat persistence on AUC-ROC, with the advantage widening from +0.035 at +1d to +0.152 at +14d. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
 
 **Approach 3 (foundation model + hybrid ensemble):** GenCast flood macro recall at +7d is 0.42 on the 8 case init dates, matching XGBoost and approaching ERA5 thresholding. Because GenCast and XGBoost fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting at the 1–6 month seasonal scale is addressed by ECMWF SEAS5 (Section 7.8), which provides the first genuine forward-looking drought forecast in this project by supplying the monthly precipitation accumulations needed to recompute SPEI-6.
 
@@ -564,10 +566,10 @@ New notebook cells: `[V2] ENSO/IOD Features` in Phase 4; `[V2] Drought Models wi
 
 | Task | Baseline recall | V1 recall | V2 recall | Δ (V2 − V1) |
 |------|----------------|-----------|-----------|-------------|
-| drought +1d | 0.982 | 0.844 | 0.750 | −0.094 |
-| drought +3d | 0.946 | 0.774 | 0.679 | −0.096 |
-| drought +7d | 0.875 | 0.754 | 0.616 | −0.137 |
-| drought +14d | 0.756 | 0.626 | 0.592 | −0.033 |
+| drought +1d | 0.9821 | 0.8441 | 0.7501 | −0.0940 |
+| drought +3d | 0.9463 | 0.7742 | 0.6785 | −0.0957 |
+| drought +7d | 0.8747 | 0.7535 | 0.6164 | −0.1371 |
+| drought +14d | 0.7561 | 0.6256 | 0.5924 | −0.0332 |
 
 *Metric: macro recall on the 2023–2025 test set.*
 
@@ -589,8 +591,6 @@ For 1–14 day operational forecasting, continue using the v1 models (`drought_+
 ---
 
 ### 12.2 Explicit Baseline Comparison Per Task
-
-**Note:** The results below were computed with the old 5-class model. The models have since been corrected to use 4 classes (Phase 3). The table will be updated after re-running Phase 5 with the 4-class scheme.
 
 New cells labelled `## [V2] Baseline Comparison -- Explicit Per-Task Results` were added to
 Phase 5 (`phase5_xgboost.ipynb`, cell IDs `v2-baseline-header` and `v2-baseline-code`). Each
@@ -622,8 +622,6 @@ Section 8.2 has been updated to reflect these findings. The results motivate Imp
 
 ### 12.3 Calibrated Probability Outputs
 
-**Note:** Calibration was performed on the old 5-class models. Results will be updated after re-running Phase 5 with the 4-class scheme.
-
 New cells labelled `## [V2] Calibrated Probabilities` were added to Phase 5
 (`phase5_xgboost.ipynb`, cell IDs `v2-calib-header` through `v2-calib-save`). Because
 `sklearn >= 1.4` removed `CalibratedClassifierCV(cv='prefit')`, calibration is implemented
@@ -636,14 +634,14 @@ unseen classes.
 
 | Task | Extreme base rate | P(Extreme) raw | P(Extreme) cal | Overconf raw | Overconf cal |
 |------|------------------|----------------|----------------|-------------|-------------|
-| drought_+1d | 0.140 | 0.143 | 0.145 (skip¹) | +0.004 | +0.005 |
-| drought_+3d | 0.140 | 0.148 | 0.169 (skip¹) | +0.008 | +0.029 |
-| drought_+7d | 0.141 | 0.153 | 0.159 (skip¹) | +0.012 | +0.018 |
-| drought_+14d | 0.141 | 0.143 | 0.146 (skip¹) | +0.002 | +0.005 |
-| flood_+1d | 0.102 | 0.094 | 0.093 | −0.008 | −0.009 |
-| flood_+3d | 0.103 | 0.096 | 0.085 | −0.006 | −0.017 |
-| flood_+7d | 0.103 | 0.091 | 0.084 | −0.012 | −0.019 |
-| flood_+14d | 0.104 | 0.130 | 0.065 | **+0.027** | −0.038 |
+| drought_+1d | 0.1397 | 0.1434 | 0.1449 (skip¹) | +0.0037 | +0.0052 |
+| drought_+3d | 0.1400 | 0.1480 | 0.1690 (skip¹) | +0.0080 | +0.0290 |
+| drought_+7d | 0.1405 | 0.1529 | 0.1585 (skip¹) | +0.0124 | +0.0180 |
+| drought_+14d | 0.1414 | 0.1429 | 0.1463 (skip¹) | +0.0015 | +0.0049 |
+| flood_+1d | 0.1023 | 0.0941 | 0.0932 | −0.0082 | −0.0091 |
+| flood_+3d | 0.1025 | 0.0962 | 0.0853 | −0.0063 | −0.0172 |
+| flood_+7d | 0.1028 | 0.0905 | 0.0837 | −0.0123 | −0.0192 |
+| flood_+14d | 0.1035 | 0.1300 | 0.0653 | **+0.0265** | −0.0382 |
 
 ¹ *Extreme-class calibration skipped: 2019–2020 calibration window contains no Extreme drought events (SPEI never below −2.0 in that period); raw probabilities passed through.*
 
@@ -899,15 +897,17 @@ Three-way comparison vs EMDAT events
 
 ## Appendix C — Hyperparameter Table
 
-*Exact values populated after Phase 5 notebook execution. See `xgb_models/` directory for saved model files.*
+Hyperparameters and CV macro recall are from the Phase 5 notebook training cell output. Test macro recall is from the held-out 2023–2025 test set (Section 12.2).
 
-| Model | max_depth | learning_rate | n_estimators | CV F1 | Test F1 |
-|-------|-----------|--------------|--------------|-------|---------|
-| drought_+1d | — | — | — | — | — |
-| drought_+3d | — | — | — | — | — |
-| drought_+7d | — | — | — | — | — |
-| drought_+14d | — | — | — | — | — |
-| flood_+1d | — | — | — | — | — |
-| flood_+3d | — | — | — | — | — |
-| flood_+7d | — | — | — | — | — |
-| flood_+14d | — | — | — | — | — |
+| Model | max_depth | learning_rate | n_estimators | CV macro recall | Test macro recall |
+|-------|-----------|--------------|--------------|-----------------|------------------|
+| drought_+1d | 4 | 0.10 | 200 | 0.7638 | 0.8441 |
+| drought_+3d | 6 | 0.01 | 500 | 0.7160 | 0.7742 |
+| drought_+7d | 6 | 0.01 | 500 | 0.6393 | 0.7535 |
+| drought_+14d | 6 | 0.05 | 300 | 0.4677 | 0.6256 |
+| flood_+1d | 4 | 0.05 | 300 | 0.7569 | 0.7098 |
+| flood_+3d | 4 | 0.10 | 200 | 0.6274 | 0.5422 |
+| flood_+7d | 6 | 0.05 | 300 | 0.4824 | 0.4213 |
+| flood_+14d | 6 | 0.01 | 500 | 0.4192 | 0.3880 |
+
+*This table covers the 8 v1 4-class models. The 4 v2 drought models (ENSO/IOD, Section 12.1) and 8 binary models (Section 12.7) use the same search grid and CV procedure; their CV and test metrics are reported in their respective sections.*
