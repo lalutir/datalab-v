@@ -1,10 +1,12 @@
 # Africa Expansion Roadmap — v3
 ## Continental Flood & Drought Risk Prediction
 
-**Prerequisite:** All seven v2 improvements in `docs/v2_improvement_plan.md` must be
-complete before starting this roadmap. The v3 work builds directly on the validated v2
-methodology — any parameter choices or model architecture changes made in v2 carry forward
-to the continental scale.
+**Prerequisite:** v2 Improvements 4 (HRES) and 5 (SEAS5) are the minimum before starting
+this roadmap — the Africa Phase 6 pipeline directly extends those two scripts. See the
+fast-path table in `docs/v2_improvement_plan.md` for the full dependency summary.
+Improvement 6 (upstream catchment) must be skipped for Africa — it is superseded by
+HydroSHEDS in Phase 4. Improvements 2, 3, and 7 are optional and can be added directly
+at Africa scale without a Jijiga version first.
 
 **Scope:** Extend the single-point Jijiga pipeline to produce daily flood and drought risk
 classifications (5-class, same schema as v2) for every ERA5 land grid point across Africa,
@@ -61,9 +63,10 @@ xarray zarr netCDF4 cartopy geopandas scipy scikit-learn h5netcdf rioxarray hydr
 ```
 
 ### Compute — GPU
-No GPU is required for v3. HRES and SEAS5 are both CPU-only pipelines available via open
-data APIs. GenCast was retired after v2 Improvement 4 (replaced by HRES for flood) and
-v2 Improvement 5 (replaced by SEAS5 for drought). RunPod is no longer needed.
+No GPU is required for v3. HRES and SEAS5 are both CPU-only. For historical init dates
+outside the ~6-month rolling archive, the ERA5+noise simulation (`--simulate`) also runs
+entirely on CPU. GenCast is not used at Africa scale — HRES covers flood and SEAS5 covers
+drought. RunPod is no longer needed.
 
 ---
 
@@ -363,9 +366,23 @@ for drought (seasonal timescale). No GPU is needed for either pipeline.
 ### HRES — flood forecast
 HRES is global at 0.1°. Regrid to 1° (conservative remapping) to match the ERA5 training
 grid. The full flood composite (API + SMI + total\_ro) can now be computed at every Africa
-grid point because HRES outputs soil moisture. Choose ~20 init dates covering Africa's main
-rainy season onsets and dry-wet transitions in 2023–2024 (ITCZ shifts, Horn short rains,
-Sahel monsoon onset, Southern Africa austral summer).
+grid point because HRES outputs soil moisture.
+
+**Archive constraint:** The ECMWF open-data rolling archive covers only ~6 months. Any
+init dates from 2023–2024 will return HTTP 404 — the same limitation discovered at Jijiga
+scale. Two tracks apply here:
+
+- **Historical validation (2023–2024 init dates):** Use the simulation approach from v2
+  (`download_hres_inputs.py --simulate`), extended to the Africa domain. ERA5 actuals +
+  lead-scaled Gaussian noise gives an approximate upper bound on real HRES performance
+  and is consistent with how Jijiga-scale results were generated.
+- **Operational use (init dates within last ~6 months):** Real HRES data is available and
+  no simulation is needed. As the project moves toward operational deployment, this becomes
+  the primary path.
+
+Choose ~20 init dates covering Africa's main rainy season onsets and dry-wet transitions
+in 2023–2024 for historical validation (simulation track), plus whichever current-date
+init dates fall within the rolling archive at time of execution (real HRES track).
 
 ### SEAS5 — drought forecast
 SEAS5 is global at ~1°. Download for all Africa land points for the same 6 init months
@@ -386,11 +403,25 @@ Zone data: `src/data/processed/africa_zones.parquet` (lon, lat, zone_id)
 Zone parameters: `src/data/processed/zone_parameters.json` (per-zone k, FC, flood thresholds)
 Per-point SPEI log-logistic parameters: saved in Phase 3 as a JSON or zarr attributes.
 
+IMPORTANT — HRES archive constraint: The ECMWF open-data rolling archive covers only ~6
+months. Any historical init dates (2023–2024) will return HTTP 404. Before calling
+`postprocess_hres_africa.py`, input files must be created by one of:
+  a) Real download (init dates within last ~6 months): extend `download_hres_inputs.py`
+     to download the Africa domain GRIB (lon -18 to 52, lat -35 to 38) and save per init
+     date as `src/data/processed/hres_africa_{init_date}.nc` with dims (date, lat, lon).
+     Regrid from HRES 0.1° to 1° using conservative area-weighted averaging (xesmf).
+  b) Simulation (all historical init dates): write `download_hres_africa_simulate.py`
+     that reads era5_africa_labeled.zarr for the 10 forecast days after each init date,
+     adds lead-scaled Gaussian noise (same noise model as `download_hres_inputs.py
+     --simulate`: multiplicative log-normal for tp/sro/ssro σ=0.12–0.20×√lead; additive
+     for swvl1/swvl2 σ=0.004×√lead), and saves as `hres_africa_{init_date}.nc` with
+     dims (date, lat, lon). Mark with attribute simulated=True. This is the standard
+     path for all 2023–2024 historical init dates.
+The script below assumes these per-init-date NetCDF files already exist.
+
 Create `src/postprocess_hres_africa.py`:
 Extend the Jijiga HRES script to all Africa land grid points.
-- For each of the ~20 init dates, load HRES NetCDF for the Africa domain.
-- Regrid from 0.1° to 1° using conservative area-weighted averaging (use xarray + scipy or
-  the `xesmf` library).
+- For each of the ~20 init dates, load hres_africa_{init_date}.nc.
 - For each grid point, compute:
   * API: initialise from ERA5 api value at init date (from era5_africa_labeled.zarr),
     then run forward using HRES daily tp. Use zone-specific k from zone_parameters.json.
@@ -398,8 +429,9 @@ Extend the Jijiga HRES script to all Africa land grid points.
   * total_ro: HRES sro + ssro.
   * flood_score and risk label using zone-specific percentile thresholds.
 - Save as zarr: 'processed-africa/hres_africa_{init_date}.zarr' with dimensions
-  (lead_days, lat, lon) and variables: hres_flood_risk, actual_flood_risk.
+  (lead_days, lat, lon) and variables: hres_flood_risk, actual_flood_risk, simulated.
 - Print macro recall by zone at leads 1, 3, 7 days vs actual ERA5 flood risk.
+  Flag simulated init dates clearly in the output.
 - Compare to XGBoost zone model recall from Phase 5 at the same leads.
 
 Create `src/postprocess_seas5_africa.py`:

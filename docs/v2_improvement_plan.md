@@ -296,8 +296,15 @@ temperature — the 60% of the flood composite driven by SMI and total_ro must b
 init-date ERA5 value. ECMWF HRES is the world's leading operational medium-range forecast
 and publishes daily open data including soil moisture layers (swvl1, swvl2) and runoff. With
 HRES, the full flood composite score can vary across the forecast horizon exactly as it does
-with ERA5 actuals. No GPU is needed. HRES data is available free via the ECMWF open data
-stream at 0.25° resolution up to 15 days lead time.
+with ERA5 actuals. No GPU is needed.
+
+**Archive limitation:** The ECMWF open-data rolling archive keeps only the most recent ~6 months
+of real-time forecasts. All eight project init dates (2023–2024) are outside this window and
+return HTTP 404. A simulation stand-in is used instead: `download_hres_inputs.py --simulate`
+builds synthetic HRES files from ERA5 actuals + lead-scaled Gaussian noise (same approach used
+for GenCast in the Phase 6 notebook). The simulation demonstrates the full-composite methodology
+and provides an approximate upper bound on real HRES performance. For operational use with
+current init dates, real HRES data is available and no simulation is needed.
 
 ### Files changed
 - `src/download_hres_inputs.py` — new script
@@ -366,8 +373,10 @@ Step 1 — Create `src/download_hres_inputs.py`:
 Use the `ecmwf-opendata` Python library to download HRES 15-day forecasts for each init date.
 Variables: tp, swvl1, swvl2, sro, ssro (and t2m for completeness). Extract only the grid point
 nearest to 42.75°E, 9.25°N. Save each as `src/data/processed/hres_jijiga_{date}.nc`.
-Include error handling for dates where HRES open data may not be available (it has a ~2 year
-rolling archive, so 2023 dates may or may not be available — print a clear message if missing).
+Include error handling for dates where HRES open data is unavailable (the rolling archive
+covers only ~6 months; all historical init dates will return 404). When real download fails,
+use `--simulate` to build ERA5+noise stand-in files — this is the standard path for all
+historical init dates in this project.
 
 Step 2 — Create `src/postprocess_hres_results.py`:
 Mirror the structure of `src/postprocess_gencast_results.py`. For each init date:
