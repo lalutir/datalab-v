@@ -179,11 +179,11 @@ Handle class imbalance with sample weights: `weight = total_samples / (4 × coun
 
 Models saved under `xgb_models/`.
 
-**Naive persistence baseline**: for horizon +n, predict risk(t+n) = risk(t). XGBoost must beat this baseline on weighted F1 to demonstrate it adds value. If it does not beat the baseline on any task, that model adds no value and should be investigated.
+**Naive persistence baseline**: for horizon +n, predict risk(t+n) = risk(t). XGBoost must beat this baseline on macro recall to demonstrate it adds value. If it does not beat the baseline on any task, that model adds no value and should be investigated.
 
 **SHAP analysis**: use `shap.TreeExplainer`. Expected pattern — at +1 day: lag_1 features dominate. At +14 days: lag_365 and lag_14 gain relative importance. Flood models: API and tp lags should rank high. Drought models: SPEI and t2m lags should rank high. SHAP findings are a key scientific output of the project.
 
-**Key evaluation metric**: weighted F1-score (handles class imbalance). For a risk warning system, **recall on Extreme class is the most important metric** — missing a real extreme event is more costly than a false alarm.
+**Key evaluation metric**: macro recall (equal weight to each class regardless of frequency). Weighted F1 was rejected because the dominant Low class drives the score — a model predicting Low for every day achieves high weighted F1 while detecting no hazard events. For a risk warning system, **recall on Extreme class is the most important metric** — missing a real extreme event is more costly than a false alarm.
 
 ### Foundation model (Phase 6)
 

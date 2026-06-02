@@ -70,7 +70,7 @@ by one to six months. This is the single highest return-on-investment change in 
    - Define feature columns = original 40 lag features + 6 ENSO/IOD lag features.
    - Retrain drought_+1d, +3d, +7d, +14d models using the same walk-forward CV and
      hyperparameter search as v1 (reuse the best v1 hyperparameters as starting point).
-   - Compare v2 vs v1 drought weighted F1 on the 2023–2025 test set in a side-by-side table.
+   - Compare v2 vs v1 drought macro recall on the 2023–2025 test set in a side-by-side table.
    - Save v2 models as `drought_v2_+{horizon}d.ubj`.
    - Run SHAP analysis on v2 models — verify ENSO/IOD features appear in top importance at
      longer horizons (+14d).
@@ -109,7 +109,7 @@ Append new cells labeled `## [V2] Drought Models with ENSO/IOD`.
   CV folds as v1 (fold 1: train 2001–2014 val 2015–2016; fold 2: 2001–2016 val 2017–2018;
   fold 3: 2001–2018 val 2019–2020). Use same class weights: total_samples / (5 × class_count).
 - Select best hyperparameters from the same grid as v1 (max_depth: 4,6,8; lr: 0.01,0.05,0.1).
-- Evaluate on test set with weighted F1. Print a side-by-side comparison: v1 vs v2 for each model.
+- Evaluate on test set with macro recall. Print a side-by-side comparison: v1 vs v2 for each model.
 - Save v2 models as `src/data/processed/xgb_models/drought_v2_+{horizon}d.ubj`.
 - Run SHAP TreeExplainer on v2 drought_+14d — plot mean absolute SHAP values, verify ENSO/IOD
   features appear in the top 10.
@@ -141,10 +141,9 @@ slowly-varying drought label.
 ### Implementation steps
 
 1. In Phase 5 notebook, add a new section after the existing evaluation:
-   - For each of the 8 tasks, compute: weighted F1 for the XGBoost model, weighted F1 for the
+   - For each of the 8 tasks, compute: macro recall for the XGBoost model, macro recall for the
      naive persistence baseline (predict risk(t) for all future horizons), and the difference.
-   - Present as a table: Task | XGBoost F1 | Persistence F1 | Δ | Beats Baseline?
-   - Also compute macro recall for the same comparison (the operationally relevant metric).
+   - Present as a table: Task | XGBoost Macro Recall | Persistence Macro Recall | Δ | Beats Baseline?
 2. Update Section 8.2 of the report: remove the blanket "beats persistence on all eight tasks"
    claim and replace with the accurate per-task findings, noting which tasks XGBoost genuinely
    adds value on and which it does not.
@@ -164,15 +163,13 @@ Task: Verify whether each XGBoost model actually beats the naive persistence bas
 test set, and fix the report accordingly.
 
 The naive persistence baseline for horizon +n is: predict risk(t+n) = risk(t).
-Metric: weighted F1 score (sklearn, average='weighted', zero_division=0).
-Also compute macro recall for each task.
+Metric: macro recall (sklearn, average='macro', zero_division=0).
 
 Step 1 — Add to `notebooks/phase5_xgboost.ipynb` (new cells ONLY, do not modify existing):
 Label the section `## [V2] Baseline Comparison — Explicit Per-Task Results`.
 - Load the test set (time >= 2023-01-01) from feature_matrix.parquet.
 - Load each of the 8 XGBoost models. Generate predictions on the test set.
-- For each task compute: XGBoost weighted F1, persistence weighted F1, XGBoost macro recall,
-  persistence macro recall.
+- For each task compute: XGBoost macro recall, persistence macro recall.
 - Print a formatted table with all results and a "Beats persistence?" column.
 - Note: for drought models the SPEI-6 label changes only ~12 times per year (monthly steps),
   so persistence is expected to be nearly perfect for all drought horizons.
@@ -536,7 +533,7 @@ events that the current model completely misses.
 5. In Phase 5 notebook, add new cells labeled `## [V2] Flood Models with Upstream Features`:
    - Load `feature_matrix_v2_flood.parquet`.
    - Train flood_+1d, +3d, +7d, +14d models using original 40 features + upstream features.
-   - Compare test set weighted F1 and Extreme-class recall against v1 flood models.
+   - Compare test set macro recall and Extreme-class recall against v1 flood models.
    - Run SHAP on flood_v2_+7d — verify upstream tp features appear prominently.
    - Save v2 models as `flood_v2_+{horizon}d.ubj`.
 
@@ -594,7 +591,7 @@ Step 4 — Add to `notebooks/phase5_xgboost.ipynb` (new cells only, labeled
 - Load feature_matrix_v2_flood.parquet.
 - Feature columns = 40 original + 8 upstream features = 48 total.
 - Retrain flood_+1d, flood_+3d, flood_+7d, flood_+14d using same CV/hyperparameter approach.
-- Print comparison table: v1 vs v2 weighted F1 and Extreme-class recall on test set.
+- Print comparison table: v1 vs v2 macro recall and Extreme-class recall on test set.
 - Run SHAP on flood_v2_+7d. Plot top 20 features by mean absolute SHAP value.
 - Load `src/data/processed/emdat.xlsx`. For each Ethiopian flood event with start date in
   2023–2025: check whether v2 flood_v2_+7d predicts risk ≥ 2 (Elevated) at any point in the
@@ -745,7 +742,7 @@ each improvement, the scientific motivation, and the result (improvement in metr
 qualitative finding).
 
 The improvements are:
-1. Baseline comparison fix — explicit per-task weighted F1 table
+1. Baseline comparison fix — explicit per-task macro recall table
 2. ENSO/IOD features — drought XGBoost with Nino3.4 and DMI lag features
 3. Probabilistic output — calibrated class probabilities + reliability diagrams
 4. ECMWF HRES flood forecast — full composite (SMI no longer frozen)
@@ -758,7 +755,7 @@ Add Section 12 with one subsection per improvement. Each subsection should have:
 - Why (1-2 sentences of scientific motivation)
 - Result (state the metric improvement or finding from the notebook output)
 
-Fill in the Result fields with placeholders like "[V2 flood_+7d F1: X.XX vs v1 X.XX]" that
+Fill in the Result fields with placeholders like "[V2 flood_+7d macro recall: X.XX vs v1 X.XX]" that
 I can replace with actual numbers after running the notebooks.
 
 Also update the Abstract to add one sentence noting that v2 improvements are documented

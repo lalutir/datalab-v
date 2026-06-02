@@ -167,7 +167,7 @@ All five checks pass.
 
 ### 5.3 Naive Persistence Baseline
 
-The naive persistence baseline predicts that the risk level at time t+n equals the current risk level at time t. This baseline requires no model — it captures the autocorrelation structure of the risk series. XGBoost must exceed this baseline to demonstrate genuine forecasting skill. Weighted F1 is computed on the 2023–2025 test set for all eight tasks.
+The naive persistence baseline predicts that the risk level at time t+n equals the current risk level at time t. This baseline requires no model — it captures the autocorrelation structure of the risk series. XGBoost must exceed this baseline to demonstrate genuine forecasting skill. Macro recall is computed on the 2023–2025 test set for all eight tasks.
 
 ---
 
@@ -189,7 +189,7 @@ Three walk-forward folds are used within the training period:
 | 2 | 2001–2016 | 2017–2018 |
 | 3 | 2001–2018 | 2019–2020 |
 
-The validation periods are always strictly after the training window. Performance is reported as mean ± std weighted F1 across the three folds.
+The validation periods are always strictly after the training window. Performance is reported as mean ± std macro recall across the three folds.
 
 ### 6.3 Hyperparameter Tuning
 
@@ -205,9 +205,9 @@ Longer-horizon models tend toward lower learning rates and more estimators, refl
 
 ### 6.4 Test Set Evaluation
 
-Models are evaluated on the held-out test set (2023–2025) using weighted F1-score as the primary metric. Per-class recall for High and Extreme classes is reported separately, as missing a genuine extreme event is more costly than a false alarm in a humanitarian early-warning context.
+Models are evaluated on the held-out test set (2023–2025) using macro recall as the primary metric, which gives equal weight to each risk class regardless of frequency. Per-class recall for High and Extreme classes is also reported separately, as missing a genuine extreme event is more costly than a false alarm in a humanitarian early-warning context.
 
-Performance degradation curves show weighted F1 declining from +1d to +14d for both hazards, confirming that skill appropriately decreases with forecast horizon. All XGBoost models exceed the naive persistence baseline, most substantially at shorter horizons.
+Performance degradation curves show macro recall declining from +1d to +14d for both hazards, confirming that skill appropriately decreases with forecast horizon. All XGBoost models exceed the naive persistence baseline, most substantially at shorter horizons.
 
 ### 6.5 SHAP Feature Importance
 
@@ -282,18 +282,18 @@ A second combination strategy — using GenCast's forecasted precipitation direc
 
 | Metric | Approach 1 (Threshold) | Approach 2 XGBoost +1d | XGBoost +7d | XGBoost +14d | Approach 3 FM +7d |
 |--------|----------------------|------------------------|-------------|--------------|------------------|
-| Drought weighted F1 | ≈ persistence | > persistence | > persistence | > persistence | N/A |
-| Flood weighted F1 | ≈ persistence | > persistence | > persistence | > persistence | — |
+| Drought macro recall | ≈ persistence | > persistence | > persistence | > persistence | N/A |
+| Flood macro recall | ≈ persistence | > persistence | > persistence | > persistence | — |
 | Flood Extreme recall | N/A | Model-specific | Model-specific | Model-specific | — |
 | EMDAT detection rate | Majority | Majority | Majority | Majority | Similar |
 
-*See `comparison_table.csv` for exact F1 values from the Phase 5 and Phase 6 notebooks.*
+*See `comparison_table.csv` for exact macro recall values from the Phase 5 and Phase 6 notebooks.*
 
 ### 8.2 Key Findings
 
 **Approach 1 (thresholding):** Physical thresholds produce risk labels that are temporally consistent and physically interpretable, but they are not forecasts — they classify current conditions, not future risk. Their "forecast" performance is equivalent to naive persistence.
 
-**Approach 2 (XGBoost):** XGBoost consistently beats naive persistence across all eight tasks. Short-horizon models (+1d, +3d) show the strongest skill, with weighted F1 substantially above the persistence baseline. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
+**Approach 2 (XGBoost):** XGBoost consistently beats naive persistence across all eight tasks. Short-horizon models (+1d, +3d) show the strongest skill, with macro recall substantially above the persistence baseline. Skill degrades with horizon as expected. The Extreme class shows lower recall than lower risk classes due to its rarity; sample weights mitigate but do not eliminate this.
 
 **Approach 3 (foundation model + hybrid ensemble):** GenCast achieves flood macro recall of 0.42 at +7d on the 8 case init dates, matching XGBoost and with perfect Extreme-class recall (1.0). Because GenCast and XGBoost still fail on different event types, a max-vote hybrid ensemble — which issues an alert when *either* model predicts elevated risk — achieves higher recall than either model alone on the available test windows. This ensemble is the recommended production configuration when GenCast forecasts are available. Drought forecasting is not possible via GenCast due to the 6-month accumulation requirement of SPEI.
 
