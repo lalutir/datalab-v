@@ -112,7 +112,7 @@ Drought risk is classified primarily using SPEI-6 thresholds following McKee et 
 | −1.5 to −1.0 | 2 | High |
 | < −1.5 | 3 | Extreme |
 
-**Modifier rule:** If base class ∈ {1, 2} AND (API < 25th-percentile_train OR SMI < 25th-percentile_train), elevate one level. The 25th percentiles are computed from training data only (2000–2022) and held fixed for test-set application. The modifier does not apply to Low (class 0) or Extreme (class 3). SPEI-12 provides supplementary drought context but is not used in the classifier to avoid conflating medium and long-term drought signals.
+**Modifier rule:** If base class ∈ {1, 2} AND SMI < 25th-percentile_train, elevate one level. The 25th percentile is computed from training data only (2000–2022) and held fixed for test-set application. The modifier does not apply to Low (class 0) or Extreme (class 3). API was excluded from the modifier because near-zero API values during dry seasons at this semi-arid grid point fire the rule spuriously, elevating days that are already dry but not genuinely at drought risk. SPEI-12 provides supplementary drought context but is not used in the classifier to avoid conflating medium and long-term drought signals.
 
 ### 4.2 Flood Risk (4 classes)
 
@@ -228,9 +228,9 @@ Longer-horizon models tend toward lower learning rates and more estimators, refl
 
 Models are evaluated on the held-out test set (2023–2025) using macro recall as the primary metric. Per-class recall for High and Extreme classes is reported separately, as missing a genuine extreme event is more costly than a false alarm in a humanitarian early-warning context.
 
-Performance degradation curves show macro recall declining from +1d to +14d for both hazards, confirming that skill appropriately decreases with forecast horizon. All XGBoost models exceed the naive persistence baseline, most substantially at shorter horizons.
+Macro recall declines from +1d to +14d for both hazards, confirming that skill degrades with horizon as expected. However, **none of the 4-class XGBoost models beats the naive persistence baseline on macro recall** — see Section 12.2 for the full per-task comparison. The binary transition alert formulation (Section 12.7) reveals genuine forward-looking skill: all four flood binary models beat persistence on AUC-ROC, with the advantage widening from +0.035 at +1d to +0.152 at +14d.
 
-Calibrated class probabilities are available for all eight models, fitted via one-vs-rest isotonic regression on the fold-3 validation set (2019–2020), and evaluated on the 2023–2025 test set in the `## [V2] Calibrated Probabilities` cells of Phase 5. The calibration behaviour differs by hazard. For drought models, the 2019–2020 calibration window contains no Extreme events (SPEI never drops below −2.0 in that period), so the Extreme-class calibrator is skipped and raw probabilities are preserved; the drought Extreme raw probabilities are already close to the test-set base rate (~14%), with mild overconfidence of +0.004 to +0.012. For flood models, three of the four horizons (+1d, +3d, +7d) show slight underconfidence for the Extreme class (raw P(Extreme) 0.01–0.01 below the base rate of ~10%), while `flood_+14d` is the most overconfident (+0.027 raw), and isotonic calibration reduces this gap, bringing the mean to −0.038 relative to the base rate. Reliability diagrams for `flood_+7d` and `drought_+7d` show these patterns across the Moderate, High, and Extreme classes. The calibrated classifiers for these two models are saved to `xgb_models/flood_+7d_calibrated.pkl` and `xgb_models/drought_+7d_calibrated.pkl`.
+Calibrated class probabilities are available for all eight models, fitted via one-vs-rest isotonic regression on the fold-3 validation set (2019–2020); see Section 12.3 for details. Reliability diagrams for `flood_+7d` and `drought_+7d` show near-calibration for drought and slight underconfidence for flood Extreme events. The calibrated classifiers for these two models are saved to `xgb_models/flood_+7d_calibrated.pkl` and `xgb_models/drought_+7d_calibrated.pkl`.
 
 ### 6.5 SHAP Feature Importance
 
@@ -446,8 +446,9 @@ Results are from real ECMWF SEAS5 system 51 data downloaded via CDS API. All 6 i
 
 | Metric | Approach 1 (Threshold) | Approach 2 XGBoost +1d | XGBoost +7d | XGBoost +14d | Approach 3 FM +7d |
 |--------|----------------------|------------------------|-------------|--------------|------------------|
-| Drought macro recall | ≈ persistence | > persistence | > persistence | > persistence | N/A |
-| Flood macro recall | ≈ persistence | > persistence | > persistence | > persistence | — |
+| Drought macro recall (4-class) | ≈ persistence | **< persistence** | **< persistence** | **< persistence** | N/A |
+| Flood macro recall (4-class) | ≈ persistence | **< persistence** | **< persistence** | **< persistence** | — |
+| Flood binary AUC-ROC | N/A | > persistence (+0.035) | > persistence (+0.119) | > persistence (+0.152) | — |
 | Flood Extreme recall | N/A | Model-specific | Model-specific | Model-specific | — |
 | EMDAT detection rate | Majority | Majority | Majority | Majority | Similar |
 
@@ -510,7 +511,7 @@ Most documented EMDAT flood events reach at least Moderate flood risk in all thr
 This project demonstrates a complete three-approach pipeline for flood and drought early warning at a single location in the Horn of Africa. The key contributions are:
 
 1. A validated daily index pipeline (SPEI, API, SMI, total\_ro) for the Jijiga grid point using ERA5 reanalysis.
-2. Eight XGBoost classifiers that beat the naive persistence baseline at all horizons, with SHAP analysis revealing physically interpretable feature importance.
+2. Eight XGBoost 4-class classifiers with SHAP analysis revealing physically interpretable feature importance, plus eight binary transition alert classifiers (Section 12.7) that beat naive persistence on AUC-ROC at all four flood horizons (margins +0.035 to +0.152, widening with horizon). The 4-class models do not beat persistence on macro recall — a result driven by the slow-changing nature of SPEI-6 and flood-event clustering; the binary OR-over-window formulation that asks "will risk escalate within N days?" is where XGBoost's anticipatory skill is detectable.
 3. A foundation model integration pipeline (GenCast) with an honest structural analysis of why soil-moisture-free atmospheric models underperform on flood composite scores, and a max-vote hybrid ensemble that improves recall by combining GenCast's forward precipitation signal with XGBoost's historical lag patterns.
 4. An honest miss analysis documenting the fundamental limitation of single-grid-point modelling for river-driven floods.
 

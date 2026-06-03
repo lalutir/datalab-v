@@ -39,6 +39,8 @@ src/
   download_seas5_inputs.py     Download SEAS5 from CDS (system 51); --simulate flag available
   postprocess_seas5_results.py SPEI-6 pipeline on SEAS5; writes seas5_drought_results.csv
 notebooks/
+  01_data_comparison.ipynb     Exploratory: EM-DAT vs ERA5 risk (raw 30-day SPEI, k=0.85 API, 5-class scheme)
+  02_risk_modelling.ipynb      Exploratory: 6 univariate time-series models (ARIMA/HW/RF/XGB/LSTM/Prophet)
   phase3_index_eda.ipynb       SPEI-6/12, API(k=0.92), SMI(FC), risk labels → era5_labeled.parquet
   phase4_feature_engineering.ipynb  40 lag features, leakage checks, naive baseline → feature_matrix.parquet
   phase5_xgboost.ipynb         8 XGBoost classifiers, walk-forward CV, SHAP → xgb_models/
@@ -104,7 +106,7 @@ Primary classification using McKee (1993) SPEI thresholds:
 - −1.5 to −1.0 → High (2)
 - < −1.5 → Extreme (3)
 
-Secondary modifier: if base risk is Moderate or High AND (API < training 25th percentile OR SMI < training 25th percentile) → elevate one level. Do not apply to Low or Extreme.
+Secondary modifier: if base risk is Moderate or High AND SMI < training 25th percentile → elevate one level. Do not apply to Low or Extreme. (API was removed from the modifier because near-zero API values during dry seasons fire the rule spuriously — see API note above.)
 
 **Flood risk** (4 classes: 0=Low, 1=Moderate, 2=High, 3=Extreme):
 
