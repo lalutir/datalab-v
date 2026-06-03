@@ -16,7 +16,7 @@ Pipeline for each init month (year, month):
   ③ Build 11-month combined series and compute 6-month rolling CWB sums
   ④ Transform to SPEI-6 using Fisk parameters re-derived from ERA5 2000-2020
   ⑤ Apply McKee (1993) drought risk thresholds
-  ⑥ Apply modifier rule using ERA5 api_92 and smi_fc at the init date
+  ⑥ Apply modifier rule using ERA5 smi_fc at the init date (SMI only; API excluded)
   ⑦ Aggregate to ensemble-mean and ensemble-max drought risk per lead month
   ⑧ Compare to actual ERA5 drought_risk
 
@@ -36,9 +36,9 @@ Assumptions documented:
     sensitivity is low because pev << |tp - pev| in magnitude.
   - Fisk parameters are re-derived here from era5_labeled.parquet instead of
     reading from Phase 3 notebook state, ensuring consistency and reproducibility.
-  - The modifier rule uses init-date ERA5 api_92 and smi_fc because SEAS5 does
-    not provide soil moisture forecasts.  This freezes the modifier state at the
-    time of forecast initialisation.
+  - The modifier rule uses init-date ERA5 smi_fc (SMI only; API excluded for the
+    same spurious-firing reason as Phase 3) because SEAS5 provides no soil moisture
+    forecast. The modifier state is frozen at initialisation.
 """
 
 import calendar
@@ -135,10 +135,8 @@ print()
 
 # ── Training-period p25 thresholds for modifier rule ──────────────────────────
 
-api_p25 = float(df.loc[train_mask, 'api_92'].quantile(0.25))
 smi_p25 = float(df.loc[train_mask, 'smi_fc'].quantile(0.25))
-print(f'Modifier rule thresholds (training p25): '
-      f'api_92 < {api_p25:.4f}  OR  smi_fc < {smi_p25:.4f}')
+print(f'Modifier rule threshold (training p25, SMI only): smi_fc < {smi_p25:.4f}')
 print()
 
 
@@ -164,9 +162,9 @@ def spei_to_base_drought_risk(spei: float) -> int:
     else:               return 4
 
 
-def apply_modifier(base: int, api_val: float, smi_val: float) -> int:
-    """Elevate drought risk one level when antecedent conditions are abnormally dry."""
-    if base in (1, 2, 3) and (api_val < api_p25 or smi_val < smi_p25):
+def apply_modifier(base: int, smi_val: float) -> int:
+    """Elevate drought risk one level if Moderate/Elevated and SMI is abnormally dry."""
+    if base in (1, 2) and smi_val < smi_p25:
         return base + 1
     return base
 
@@ -284,7 +282,7 @@ for year, month in INIT_MONTHS:
             cal_vm = vm
             spei   = cwb6m_to_spei(cwb6m, cal_vm)
             base   = spei_to_base_drought_risk(spei)
-            risk   = apply_modifier(base, api_init, smi_init)
+            risk   = apply_modifier(base, smi_init)
             member_risk[mi, li] = risk
 
     # ── Ensemble aggregation ──────────────────────────────────────────────────
@@ -444,7 +442,7 @@ for idx, (year, month) in enumerate(INIT_MONTHS):
                 cwb6m_f = float(np.sum(combined_f[li : li + 6]))
                 spei_f  = cwb6m_to_spei(cwb6m_f, vm_f2)
                 base_f  = spei_to_base_drought_risk(spei_f)
-                risk_f  = apply_modifier(base_f, api_init, smi_init)
+                risk_f  = apply_modifier(base_f, smi_init)
                 all_risks[mi_f, li] = risk_f
         p10 = np.percentile(all_risks, 10, axis=0)
         p90 = np.percentile(all_risks, 90, axis=0)

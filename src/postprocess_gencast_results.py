@@ -14,8 +14,9 @@ Approach 3 (GenCast) flood pipeline:
 Approach 3 drought pipeline:
   - SPEI: ERA5 spei_6 at init date, forward-filled (6-month index can't be
            updated from a 10-day GenCast forecast)
-  - API modifier uses GenCast tp-derived API vs training 25th percentile
-  - SMI modifier uses ERA5 SMI at init date
+  - Modifier: elevate one level if SPEI base class is 1 or 2 AND ERA5 SMI at
+    init date is below training p25. API is excluded from the modifier (same
+    reason as Phase 3: near-zero API in dry spells fires the rule spuriously)
 
 Run:  python src/postprocess_gencast_results.py
 """
@@ -78,19 +79,18 @@ def flood_label(s):
     elif s < p97: return 3
     else: return 4
 
-# Drought modifier thresholds
-api_p25  = float(df.loc[train_mask, 'api_92'].quantile(0.25))
-smi_p25  = float(df.loc[train_mask, 'smi_fc'].quantile(0.25))
+# Drought modifier threshold — SMI only; API excluded (spurious dry-season firing)
+smi_p25 = float(df.loc[train_mask, 'smi_fc'].quantile(0.25))
 
-def drought_label(spei, api_val, smi_val):
-    """Apply McKee thresholds + modifier rule (CLAUDE.md methodology)."""
+def drought_label(spei, smi_val):
+    """Apply McKee thresholds + SMI-only modifier rule (CLAUDE.md methodology)."""
     if spei >= -0.5:   base = 0
     elif spei >= -1.0: base = 1
     elif spei >= -1.5: base = 2
     elif spei >= -2.0: base = 3
     else:              base = 4
-    # Modifier: elevate by 1 if base is 1-3 and API or SMI below training p25
-    if 1 <= base <= 3 and (api_val < api_p25 or smi_val < smi_p25):
+    # Modifier: elevate by 1 if base is 1 or 2 and SMI below training p25
+    if base in (1, 2) and smi_val < smi_p25:
         base = min(base + 1, 4)
     return base
 
@@ -134,7 +134,7 @@ for date_str in INIT_DATES:
         for d in range(n_days):
             score = calc_flood_score(api[d], smi_init)
             member_flood_risk[m, d]   = flood_label(score)
-            member_drought_risk[m, d] = drought_label(spei_init, api[d], smi_init)
+            member_drought_risk[m, d] = drought_label(spei_init, smi_init)
 
     # Ensemble mean risk (rounded) and ensemble maximum
     ens_mean_flood   = member_flood_risk.mean(axis=0)

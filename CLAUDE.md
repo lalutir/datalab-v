@@ -28,7 +28,8 @@ src/
   data/
     raw/            ERA5 6-hourly NetCDF files (2000–2025, monthly zips)
     processed/
-      era5_2000_2025.parquet   9497 rows × 23 cols — read-only source of truth
+      era5_2000_2025.parquet   9497 rows × 23 cols — read-only raw source of truth (api k=0.85, spei 30-day rolling)
+      era5_final.parquet       9497 rows × 24 cols — pipeline-computed corrected indices (api_92, smi_fc, spei_6, spei_12); input to Phase 3
       emdat.xlsx               EM-DAT disaster events — validation only, never for training
       era5_labeled.parquet     output of phase3
       feature_matrix.parquet   output of phase4
@@ -75,15 +76,15 @@ Four indices are computed. These are the inputs to both the risk classifiers and
 - Calibrated on the 2000–2020 reference period only
 - Monthly accumulations, then forward-filled to daily resolution
 - Captures drought driven by both rainfall deficit AND high-temperature evapotranspiration — critical for the Horn of Africa
-- The existing `spei` column in `era5_2000_2025.parquet` is a 30-day rolling approximation — **do not use it for analysis**
+- The `spei` column in `era5_2000_2025.parquet` is a 30-day rolling approximation — **do not use it for analysis**. `src/indices.py` computes proper SPEI-6/12 and stores them as `spei_6`/`spei_12` in `era5_final.parquet`, which is what Phase 3 loads
 
 **API** (Antecedent Precipitation Index):
 - Formula: `API(t) = k × API(t-1) + P(t)` where `P(t)` is daily total precipitation
 - Decay constant `k = 0.92` (~12-day soil memory, appropriate for semi-arid soils near Jijiga)
 - Initialised at 0 on 2000-01-01, run forward through the full record
 - Captures soil saturation state — recent rain counts more than older rain
-- The raw parquet `api` column uses `k = 0.85` — **phase 3 recomputes with k = 0.92**
-- Do NOT use API in the drought classifier — near-zero values during dry seasons trigger spurious modifier rule firing
+- The `api` column in `era5_2000_2025.parquet` uses `k = 0.85`. `src/indices.py` computes the corrected version with `k = 0.92` and stores it as `api_92` in `era5_final.parquet`, which is what Phase 3 loads
+- Do NOT use API in the drought modifier — near-zero values during dry seasons trigger spurious modifier rule firing. The modifier uses SMI only
 
 **SMI** (Soil Moisture Index):
 - Formula: `SMI = (swvl1 + swvl2) / (FC1 + FC2)`, clipped to [0, 1]
@@ -235,7 +236,7 @@ Accept unexplained elevated risk periods with no EM-DAT entry — small local ev
 - **Monthly SPEI disaggregation artefact**: SPEI is computed on monthly accumulations then forward-filled to daily. This means SPEI value is constant within each month, which is a coarse approximation.
 - **GenCast 1° resolution**: a 1° grid cell (~100 km) is a very coarse representation of Jijiga micro-climate.
 - **Forecast horizon limit**: GenCast produces forecasts up to 10 days. The +14 day XGBoost target has no foundation model equivalent and relies on climatological extrapolation.
-- **No ENSO/IOD features**: El Niño and Indian Ocean Dipole conditions are primary drivers of multi-year drought in the Horn of Africa. Their absence from the feature set limits seasonal drought skill.
+- **ENSO/IOD features (V2 — drought XGBoost only)**: Niño 3.4 and DMI lag features were added in V2 and SHAP confirms a teleconnection signal, but they did not improve 1–14 day recall because SPEI-6 already encodes the precipitation deficit they drive. These features would be more valuable in a seasonal (1–6 month) outlook model.
 
 ---
 
@@ -268,8 +269,7 @@ Install shap separately if missing: `pip install shap` (version 0.51.0 tested).
 ## Important constraints
 
 - `emdat.xlsx` is validation-only — never used as training labels or features.
-- The raw parquet `api` column uses `k=0.85`; phase 3 recomputes with `k=0.92`.
-- The raw parquet `spei` column is a 30-day rolling approximation; phase 3 recomputes proper SPEI-6/12.
+- `era5_2000_2025.parquet` has a raw `api` column (k=0.85) and a 30-day rolling `spei` column — never use these for analysis. Always use `era5_final.parquet` which contains `api_92` (k=0.92), `smi_fc`, `spei_6`, and `spei_12` computed by `src/indices.py`.
 - All scalers, percentile thresholds, and normalisation parameters must be fit on 2001–2022 training data only.
 - Temporal split is strict — never shuffle time series data.
 - Single grid-point cannot detect upstream Wabi Shabelle river floods — document prominently in limitations.

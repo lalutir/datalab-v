@@ -401,7 +401,7 @@ Ensemble mean and max drought risk per lead month
 
 **pev assumption:** SEAS5 `seasonal-monthly-single-levels` does not include potential evapotranspiration. The ERA5 training-period monthly climatological pev is used as a constant for each calendar month across all 51 ensemble members. This introduces a small bias in CWB during anomalously warm forecast months, but sensitivity is low — at this arid location, the variability in precipitation dominates CWB variability by an order of magnitude.
 
-**Modifier rule:** The api_92 and smi_fc modifier thresholds (training period 25th percentiles) are applied using ERA5 values at the last day of the init month for all lead months. Since SEAS5 provides no soil moisture forecast, the modifier state is frozen at initialisation.
+**Modifier rule:** The smi_fc modifier threshold (training period 25th percentile) is applied using the ERA5 SMI value at the last day of the init month, frozen across all lead months. Since SEAS5 provides no soil moisture forecast, there is no way to update the modifier mid-forecast. API is excluded from the modifier for the same reason as in Phase 3: its decay toward zero during dry spells would fire the rule spuriously for any dry-init month regardless of genuine drought risk.
 
 #### Init months evaluated
 
@@ -433,7 +433,7 @@ Results are from real ECMWF SEAS5 system 51 data downloaded via CDS API. All 6 i
 #### Limitations specific to Approach 3 Drought
 
 1. **Small sample.** Six init months × 6 leads = 36 forecast points. Results are not statistically robust; the test window (2023–2024) coincided with a post-drought recovery period unrepresentative of multi-year climatology.
-2. **Frozen modifier.** api_92 and smi_fc are fixed at init date for all 6 lead months because SEAS5 provides no soil moisture. The modifier over-predicts risk at dry-init months regardless of forecast precipitation, systematically inflating class 2+ predictions.
+2. **Frozen modifier.** The SMI modifier threshold is evaluated using the ERA5 smi_fc value at the init date and held fixed for all 6 lead months, because SEAS5 provides no soil moisture forecast. This causes over-prediction at dry-init months: whenever SMI < p25 at initialisation, every forecast month is elevated regardless of what the precipitation forecast actually implies about soil moisture recovery.
 3. **Frozen pev.** Using ERA5 training-period climatological pev ignores anomalously high evaporative demand in warm forecast months, slightly underestimating CWB deficits.
 4. **Monthly resolution only.** SEAS5 forecasts monthly totals; within-month variability is not resolved.
 5. **Test period not representative of drought years.** The 2022–23 drought had largely recovered by early 2023. Evaluating on a period with persistent drought (2016–17, 2022) would produce very different — and likely higher — recall values.
@@ -684,7 +684,7 @@ unseen classes.
 **Design decisions:**
 - Fisk parameters are re-derived from `era5_labeled.parquet` rather than from Phase 3 notebook state, for reproducibility.
 - ERA5 climatological monthly mean pev (2001–2022) is used as a constant for SEAS5 CWB because `seasonal-monthly-single-levels` does not include potential evapotranspiration.
-- The modifier rule (api_92, smi_fc thresholds) uses ERA5 values at the init date, frozen for all leads.
+- The modifier rule (smi_fc threshold only; API excluded for the same spurious-firing reason as Phase 3) uses the ERA5 SMI value at the init date, frozen for all leads.
 - The comparison_table.csv drought N/A rows are filled with SEAS5 ensemble-max macro recall at leads 1, 2, and 3 months, with a note that SEAS5 operates at monthly timescales.
 
 Run the pipeline:
