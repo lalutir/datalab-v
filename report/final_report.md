@@ -171,7 +171,7 @@ Each row in the feature matrix contains 40 features: lag copies of 8 variables a
 - **Variables:** SPEI-6, API-92, SMI-FC, total\_ro, tp, t2m, e, pev
 - **Lag offsets:** 1, 3, 7, 14, 365 days
 
-The lag-365 feature is the seasonal analogue: it encodes what conditions were at this location exactly one year ago, giving the model implicit awareness of the annual cycle without explicit calendar inputs. After computing all lags, the first 365 rows (which have NaN for lag-365 features) are dropped, leaving approximately 9,132 usable rows.
+The lag-365 feature is the seasonal analogue: it encodes what conditions were at this location exactly one year ago, giving the model implicit awareness of the annual cycle without explicit calendar inputs. After computing all lags, rows with any NaN in the lag-365 features are dropped, leaving 8,980 usable rows. The drop removes 517 rows rather than the naively expected 365: the extra 152 come from SPEI-6 being NaN for January–May 2000 (the log-logistic fit requires at least 6 months of data), which propagates into `spei_6_lag_365` for January–May 2001, pushing the dataset start date to 2001-06-01.
 
 ### 5.2 Leakage Review
 
