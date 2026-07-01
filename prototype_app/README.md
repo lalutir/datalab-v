@@ -1,115 +1,88 @@
-# Jijiga Flood & Drought Risk Prediction — Prototype App
+# Jijiga Early Warning Dashboard - Prototype App
 
-## Overview
+## For the opdrachtgever
 
-This is a prototype/demo interface for the hybrid ensemble model from the Datalab portfolio project. It shows how the model predicts drought and flood risk for the next 1, 3, or 7 days based on real-time weather forecasts.
+This app is meant to be opened through a hosted Streamlit link. No Python, GitHub, terminal, or local installation is needed.
 
-**This is not a production system.** It is intended as a demonstration of model functionality.
-
-## For the client (non-technical)
-
-The easiest way to use this app is via the hosted version — no installation required:
-
-**Just open this URL in your browser:**
+Hosted demo URL after deployment:
 
 > https://jijiga-prediction.streamlit.app
 
-*(Note for the development team: this URL becomes active after deploying to Streamlit Community Cloud — see deployment instructions below.)*
+You only need:
 
-All you need is:
-- A web browser (Chrome, Firefox, Edge, Safari)
+- A web browser
 - An internet connection
 
-No Python, no GitHub, no technical knowledge required.
+**Important:** this is a Datalab prototype/demo. It is not an official warning system and must not be used for operational flood or drought decisions.
 
----
+## What the app shows
 
-## For the development team
+The dashboard estimates flood and drought risk for the Jijiga ERA5 grid point near 9.25N, 42.75E. It supports +1, +3, and +7 day forecast horizons.
 
-### Quick start (local)
+The live demo combines:
+
+- Stored XGBoost models trained from ERA5-derived lag features
+- A forecast-index component using Open-Meteo precipitation
+- A flood ensemble that takes the maximum of XGBoost and forecast-index risk
+- A drought output based on XGBoost, because SPEI-6 cannot be updated from a 7-day forecast
+
+The app does **not** run live GenCast GPU inference. It demonstrates the forecast-index step from the larger foundation-model pipeline.
+
+## Local run for the development team
+
+From the `prototype_app` folder:
 
 ```bash
-# 1. Install dependencies (from the prototype_app/ folder)
 pip install -r requirements.txt
-
-# 2. Start the app
 streamlit run app.py
 ```
 
-The app opens automatically in your browser at `http://localhost:8501`.
+The app opens at `http://localhost:8501`.
 
-### Deploy to Streamlit Community Cloud (free)
+## Deploy to Streamlit Community Cloud
 
-This makes the app available to anyone via a public URL:
+Recommended low-cost/free route:
 
-1. Push this repository to GitHub (if not already done)
-2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub
-3. Click "New app" and select:
-   - Repository: your repo
-   - Branch: main
-   - Main file path: `prototype_app/app.py`
-4. Click "Deploy"
-5. After ~2 minutes, you get a public URL to share with the client
+1. Push the repository to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+3. Create a new app.
+4. Select the repository and branch.
+5. Set the main file path to `prototype_app/app.py`.
+6. Deploy the app.
+7. Share the generated public Streamlit URL with the opdrachtgever.
 
-**Requirements for deployment:**
-- The repo must be public (or you use a paid Streamlit tier for private repos)
-- Total repo size must be under 1 GB (ours is ~25 MB — well within limits)
-- The app needs internet access to call the Open-Meteo API (available on Streamlit Cloud)
+### Dependency note
 
----
+The prototype dependencies are listed in `prototype_app/requirements.txt`. If Streamlit Community Cloud installs only the repository-root `requirements.txt` for your setup, use a deployment branch where the root `requirements.txt` contains the app dependencies from `prototype_app/requirements.txt`.
 
-## What it does
+## Required repository files
 
-1. **Fetches weather forecast** via the free Open-Meteo API (no API key needed)
-2. **XGBoost component**: predicts risk from historical lag features (40 features)
-3. **GenCast-style component**: computes forward API from forecast precipitation to get flood score
-4. **Hybrid ensemble**: `max(XGBoost, GenCast-style)` — takes the highest risk from both models
-
-## Required files
-
-The app reads the following files from the repository (relative to project root):
+The app expects these files to exist in the repository:
 
 | File | Purpose |
 |------|---------|
-| `src/data/processed/era5_labeled.parquet` | ERA5 data + risk labels (Phase 3 output) |
-| `src/data/processed/feature_matrix.parquet` | 40 lag features for XGBoost (Phase 4 output) |
-| `src/data/processed/xgb_models/flood_+{1,3,7}d.ubj` | XGBoost flood models (Phase 5) |
-| `src/data/processed/xgb_models/drought_+{1,3,7}d.ubj` | XGBoost drought models (Phase 5) |
+| `src/data/processed/era5_labeled.parquet` | ERA5 data and risk labels |
+| `src/data/processed/feature_matrix.parquet` | XGBoost lag feature matrix |
+| `src/data/processed/xgb_models/flood_+1d.ubj` | Flood model for +1 day |
+| `src/data/processed/xgb_models/flood_+3d.ubj` | Flood model for +3 days |
+| `src/data/processed/xgb_models/flood_+7d.ubj` | Flood model for +7 days |
+| `src/data/processed/xgb_models/drought_+1d.ubj` | Drought model for +1 day |
+| `src/data/processed/xgb_models/drought_+3d.ubj` | Drought model for +3 days |
+| `src/data/processed/xgb_models/drought_+7d.ubj` | Drought model for +7 days |
 
-## Model / notebook source
-
-- **Primary source**: `notebooks/phase6_foundation_model.ipynb`
-- **Model**: Hybrid ensemble (Section 5 of that notebook)
-- **Ensemble logic**: `ensemble_risk = max(XGBoost_pred, GenCast_flood_score)`
-- **XGBoost models**: trained in `notebooks/phase5_xgboost.ipynb`
-- **Risk labels**: defined in `notebooks/phase3_index_eda.ipynb`
+Paths are resolved relative to the repository root, so the app can run locally or in a hosted Streamlit environment.
 
 ## Prototype limitations
 
-1. **SPEI-6 is frozen**: the 6-month drought index cannot be updated from a 7-day forecast. The last known ERA5 value is used.
-2. **SMI and total_ro are frozen**: Open-Meteo does not provide exact equivalents of ERA5 soil moisture/runoff.
-3. **lag_365 features**: XGBoost uses features from 1 year ago — these come from stored ERA5 data, not from live data.
-4. **Single grid point**: the model represents only Jijiga (42.75E, 9.25N). Conditions elsewhere in the region may differ.
-5. **Open-Meteo vs ERA5**: forecast variables from Open-Meteo are not identical to ERA5 reanalysis. For a demo this is acceptable.
-6. **No upstream floods**: the model cannot detect floods from the Wabi Shabelle river (structural limitation).
-7. **GenCast is simulated**: the GenCast component uses the same flood-score computation with forecast precipitation, not the actual GenCast foundation model (which requires an A100 GPU).
-
-## Technical architecture
-
-```
-Open-Meteo API --> forecast precipitation (7 days)
-     |
-[GenCast-style]: forward API --> flood score --> risk label
-     |
-[XGBoost]: feature_matrix (lag features) --> risk label
-     |
-[Ensemble]: max(XGBoost, GenCast-style) --> final prediction
-     |
-Streamlit UI: risk indicator + charts + table
-```
+- Single ERA5 grid point near Jijiga only
+- No upstream Wabi Shabelle river flood detection
+- No live GenCast GPU inference in the hosted demo
+- Open-Meteo forecast variables are not identical to ERA5 variables
+- SMI, SPEI-6, and total runoff are not dynamically forecast by the live demo
+- Predictions are indicative and for portfolio demonstration only
 
 ## Troubleshooting
 
-- **"Could not connect to Open-Meteo"**: check your internet connection. The app needs internet to fetch the weather forecast.
-- **"FileNotFoundError"**: make sure you start the app from the `prototype_app/` folder and that the `src/data/processed/` files exist.
-- **Model loads slowly**: first load takes a few seconds (parquet files + XGBoost models). After that it is cached.
+- **Weather forecast error:** check that the hosted app has internet access to Open-Meteo.
+- **Missing file error:** confirm the required processed data and model artifacts are committed or otherwise available to the hosted app.
+- **Slow first load:** Streamlit loads parquet files and XGBoost models on first use, then caches the predictor.
